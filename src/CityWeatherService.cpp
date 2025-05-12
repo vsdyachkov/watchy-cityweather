@@ -20,7 +20,7 @@ bool CityWeatherService::getLocationData()
 {
 
     HTTPClient http;
-    http.setConnectTimeout(10000);
+    http.setConnectTimeout(20000);
     // Serial.print(" " + ipWhoUrl + " ");
     http.begin(IP_WHO_URL);
     int httpCode = http.GET();
@@ -54,7 +54,7 @@ bool CityWeatherService::getWeatherData()
 {
 
     HTTPClient http;
-    http.setConnectTimeout(10000);
+    http.setConnectTimeout(20000);
     String weatherQueryURL = OPEN_METEO_URL;
     if (locationData.lat != "" && locationData.lon != "")
     {

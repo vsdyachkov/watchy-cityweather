@@ -28,7 +28,6 @@ public:
 
     bool updateWifiData();
     void getCurrentWeekForecast(DailyForecast weekDay[7]);
-    // void printWeekTable();
 
 private:
     CityWeather &cityWeather;

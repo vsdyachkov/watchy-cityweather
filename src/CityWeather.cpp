@@ -1,6 +1,7 @@
 #include <vector>
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
+#include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include "CityWeather.h"
@@ -164,34 +165,35 @@ void CityWeather::drawTime()
       (currentTime.Hour < 10 ? "0" : "") + String(currentTime.Hour) + ":" +
       (currentTime.Minute < 10 ? "0" : "") + String(currentTime.Minute);
 
-  drawOutlinedText(display, -1, 17, timeStr, &FreeSansBold12pt7b, GxEPD_YELLOW);
+  display.setTextColor(GxEPD_BLACK);
+  display.setFont(&FreeSansBold12pt7b);
+  display.setCursor(-2, 17);
+  display.print(timeStr);
 }
 
 void CityWeather::drawBattery()
 {
-  display.drawBitmap(175, 1, battery, 24, 16, 1);
-  display.setFont();
-  display.setTextColor(GxEPD_WHITE);
-  display.setCursor(177, 5);
+  display.drawBitmap(143, 1, battery, 9, 15, GxEPD_BLACK);
+  display.setTextColor(GxEPD_BLACK);
+  display.setFont(&FreeSansBold9pt7b);
   float voltage = getBatteryVoltage();
   int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
-  String batteryStr = String(batteryPercent);
-  if (batteryPercent < 100)
-    batteryStr = batteryStr + "%";
-  display.print(batteryStr);
+  String batteryStr = String(batteryPercent) + "%";
+  drawTextRightAligned (display, 198, 14, batteryStr);
 }
 
 void CityWeather::drawSky()
 {
-  drawStuckiDitherRect(display, 0, 0, 200, 94, ditheringValue);
+  drawStuckiDitherRect(display, 0, 19, 200, 88, ditheringValue);
 }
 
 void CityWeather::drawCity()
 {
-  display.drawBitmap(0, 28, city, 200, 65, 1);
-  display.drawBitmap(-1, 29, city, 200, 65, 1);
-  display.drawBitmap(1, 29, city, 200, 65, 1);
-  display.drawBitmap(0, 29, city, 200, 65, 0);
+  int y = 40;
+  display.drawBitmap(0, y-1, city, 200, 65, 1);
+  display.drawBitmap(-1, y, city, 200, 65, 1);
+  display.drawBitmap(1, y, city, 200, 65, 1);
+  display.drawBitmap(0, y, city, 200, 65, 0);
 }
 
 void CityWeather::drawWatchFace()
@@ -203,30 +205,6 @@ void CityWeather::drawWatchFace()
 
   drawTime();
   drawBattery();
-
-  display.setTextColor(0);
-  display.setTextWrap(false);
-  display.setFont(&FreeSansBold9pt7b);
-
-
-  display.drawLine(1, 130, 198, 130, 0);
-
-  drawLine (display, 29, 95, 29, 212, 0);
-  
-  drawLine (display, 57, 95, 57, 212, 0);
-  drawLine (display, 85, 95, 85, 212, 0);
-  drawLine (display, 85, 95, 85, 212, 0);
-  drawLine (display, 141, 95, 141, 212, 0);
-  drawLine (display, 169, 95, 169, 212, 0);
-
-  display.fillRect (1, 94, 200, 13, GxEPD_BLACK);
-
-  // drawStuckiDitherRectConst (display, 1, 95, 199, 108, 0.5);
-
-
-  display.drawLine(0, 95, 0, 211, 0);
-  display.drawLine(199, 95, 199, 212, 0);
-  display.drawLine(198, 199, 1, 199, 0);
 
   // int x = 1;
   // int y = 172;
@@ -245,78 +223,42 @@ void CityWeather::drawWatchFace()
   
   for (int i = 0; i < 7; i++)
   {
-     display.setFont();
-     display.setTextColor(GxEPD_WHITE);
+    // fill current day
+    tmElements_t tmNow;
+    Watchy::RTC.read(tmNow);
+    uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
+    if (currentWeek[i].date == today) {
+      fillRect(display, 1+i*28, 105, 28, 200-105);
+    }
 
+    if (i < 7) {
+      drawLine (display, 1+i*28, 95, 1+i*28, 200);
+    }
+    
     // weekday
-    display.setCursor(11+i*28, 98);
-    display.print(currentWeek[i].weekDay);
-
-    display.setFont(&FreeSansBold9pt7b);
+    display.setFont();
     display.setTextColor(GxEPD_BLACK);
+    printCentered (display, currentWeek[i].weekDay, (i * 28) + 17, 108);
 
     // day
-    display.setCursor(4+i*28, 123);
+    display.setTextColor(GxEPD_BLACK);
+    display.setFont(&FreeSansBold9pt7b);
     int day = currentWeek[i].date % 100;
-    display.print(day);
+    printCentered (display, (String)day, (i * 28) + 14, 132);
 
     // weather
-    display.drawBitmap(8+i*28, 135, image_download__copy__bits, 15, 16, 0);
+    display.drawBitmap(8+i*28, 140, image_download__copy__bits, 15, 16, GxEPD_BLACK);
 
-    // t max
-    display.setCursor(7+i*28, 170);
-    display.print(currentWeek[i].tempMax);
-
-    // t min
-    display.setCursor(10+i*28, 194);
-    display.print(currentWeek[i].tempMin);
+    // tMax & tMin
+    display.setFont(&FreeSans9pt7b);
+    printCentered (display, (String)currentWeek[i].tempMax, (i * 28) + 14, 175);
+    printCentered (display, (String)currentWeek[i].tempMin, (i * 28) + 14, 195);
   }
 
+  drawLine (display, 0, 135, 200, 135, 0, 4); // day bottom
+
+  display.drawLine(0, 105, 0, 200, GxEPD_BLACK);
+  display.drawLine(199, 105, 199, 200, GxEPD_BLACK);
+  display.drawLine(1, 199, 200, 199, GxEPD_BLACK);
+
 };
-
-//     void CityWeatherService::printWeekTable()
-// {
-//     // 1) Заголовок: дни недели
-//     for (int i = 0; i < 7; i++)
-//     {
-//         Serial.print(wdayNames[i]);
-//         if (i < 6)
-//             Serial.print(" ");
-//     }
-//     Serial.println();
-
-//     // 2) Число месяца (из поля date = YYYYMMDD)
-//     for (int i = 0; i < 7; i++) {
-//         int day = currentWeek[i].date % 100;  // отбрасываем YYYYMM
-//         Serial.print(day);
-//         if (i < 6) Serial.print(" ");
-//     }
-//     Serial.println();
-
-//     // 3) Коды погоды
-//     for (int i = 0; i < 7; i++)
-//     {
-//         Serial.print(weatherNameFromCode(currentWeek[i].weather_code));
-//         if (i < 6)
-//             Serial.print(" ");
-//     }
-//     Serial.println();
-
-//     // 4) Максимумы
-//     for (int i = 0; i < 7; i++)
-//     {
-//         Serial.print(currentWeek[i].temp_max);
-//         if (i < 6)
-//             Serial.print(" ");
-//     }
-//     Serial.println();
-
-//     // 5) Минимумы
-//     for (int i = 0; i < 7; i++)
-//     {
-//         Serial.print(currentWeek[i].temp_min);
-//         if (i < 6)
-//             Serial.print(" ");
-//     }
-//     Serial.println();
-// };
