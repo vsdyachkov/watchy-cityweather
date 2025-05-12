@@ -167,7 +167,7 @@ void CityWeather::drawTime()
 
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeSansBold12pt7b);
-  display.setCursor(-2, 17);
+  display.setCursor(-1, 17);
   display.print(timeStr);
 }
 
