@@ -63,29 +63,6 @@ void WatchyPipBoy::drawSteps(){
     display.print(stepCount);
 }
 
-void WatchyPipBoy::drawBattery(){
-    display.drawBitmap(10, 150, battery, 37, 21, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    display.fillRect(15, 155, 27, 11, DARKMODE ? GxEPD_BLACK : GxEPD_WHITE);//clear battery segments
-    int8_t batteryLevel = 0;
-    float VBAT = getBatteryVoltage();
-    if(VBAT > 4.1){
-        batteryLevel = 3;
-    }
-    else if(VBAT > 3.95 && VBAT <= 4.1){
-        batteryLevel = 2;
-    }
-    else if(VBAT > 3.80 && VBAT <= 3.95){
-        batteryLevel = 1;
-    }
-    else if(VBAT <= 3.80){
-        batteryLevel = 0;
-    }
-
-    for(int8_t batterySegments = 0; batterySegments < batteryLevel; batterySegments++){
-        display.fillRect(15 + (batterySegments * 9), 155, 7, 11, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    }
-}
-
 void WatchyPipBoy::drawWeather(){
 
     weatherData currentWeather = getWeatherData();
