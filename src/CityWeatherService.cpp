@@ -11,9 +11,8 @@ RTC_DATA_ATTR LocationData locationData;
 RTC_DATA_ATTR const char *wdayNames[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
 
 RTC_DATA_ATTR DailyForecast forecast[NUM_DAYS];
-RTC_DATA_ATTR DailyForecast currentWeek[7];
 
-RTC_DATA_ATTR int updateMinutes = 0;
+RTC_DATA_ATTR int updateMinutes = OPEN_METEO_UPDATE_INTERVAL;
 
 CityWeatherService::CityWeatherService(CityWeather &cw) : cityWeather(cw) {}
 
@@ -96,9 +95,9 @@ bool CityWeatherService::getWeatherData()
             uint32_t dateNum = year * 10000 + month * 100 + day;
 
             forecast[i].date = dateNum;
-            forecast[i].temp_max = round((int)temps_max[i]);
-            forecast[i].temp_min = round((int)temps_min[i]);
-            forecast[i].weather_code = (int)codes[i];
+            forecast[i].tempMax = round((int)temps_max[i]);
+            forecast[i].tempMin = round((int)temps_min[i]);
+            forecast[i].weatherCode = (int)codes[i];
         }
         Serial.println("OK");
         return true;
@@ -180,7 +179,7 @@ void CityWeatherService::sortForecasts(DailyForecast *forecastArray, size_t size
     }
 }
 
-void CityWeatherService::getCurrentWeekForecast()
+void CityWeatherService::getCurrentWeekForecast(DailyForecast currentWeek[7])
 {
     tmElements_t tmNow;
     Watchy::RTC.read(tmNow);
@@ -212,10 +211,13 @@ void CityWeatherService::getCurrentWeekForecast()
         if (!found)
         {
             currentWeek[weekIndex].date = targetDate;
-            currentWeek[weekIndex].temp_max = 0;
-            currentWeek[weekIndex].temp_min = 0;
-            currentWeek[weekIndex].weather_code = 0;
+            currentWeek[weekIndex].tempMax = 0;
+            currentWeek[weekIndex].tempMin = 0;
+            currentWeek[weekIndex].weatherCode = 0;
         }
+        
+        
+        currentWeek[weekIndex].weekDay = wdayNames[weekIndex];
     }
 }
 
@@ -266,44 +268,6 @@ String CityWeatherService::weatherNameFromCode(int code)
     }
 }
 
-void CityWeatherService::printWeekTable()
-{
-    // 1) Заголовок: дни недели
-    for (int i = 0; i < 7; i++)
-    {
-        Serial.print(wdayNames[i]);
-        if (i < 6)
-            Serial.print(" ");
-    }
-    Serial.println();
-
-    // 2) Коды погоды
-    for (int i = 0; i < 7; i++)
-    {
-        Serial.print(weatherNameFromCode(currentWeek[i].weather_code));
-        if (i < 6)
-            Serial.print(" ");
-    }
-    Serial.println();
-
-    // 3) Максимумы
-    for (int i = 0; i < 7; i++)
-    {
-        Serial.print(currentWeek[i].temp_max);
-        if (i < 6)
-            Serial.print(" ");
-    }
-    Serial.println();
-
-    // 4) Минимумы
-    for (int i = 0; i < 7; i++)
-    {
-        Serial.print(currentWeek[i].temp_min);
-        if (i < 6)
-            Serial.print(" ");
-    }
-    Serial.println();
-};
 
 
 

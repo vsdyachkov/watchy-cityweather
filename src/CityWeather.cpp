@@ -110,220 +110,213 @@ static const unsigned char PROGMEM image_download__copy__bits[] = {0x01, 0x00, 0
 
 static const unsigned char PROGMEM image_download__copy__1_bits[] = {0x00, 0x20, 0x00, 0x02, 0x02, 0x00, 0x00, 0x70, 0x00, 0x01, 0x8c, 0x00, 0x09, 0x04, 0x80, 0x02, 0x02, 0x00, 0x02, 0x02, 0x00, 0x07, 0x82, 0x00, 0x08, 0x44, 0x80, 0x10, 0x2c, 0x00, 0x30, 0x30, 0x00, 0x60, 0x1e, 0x00, 0x80, 0x03, 0x00, 0x80, 0x01, 0x00, 0x80, 0x01, 0x00, 0x7f, 0xfe, 0x00};
 
-void CityWeather::handleButtonPress() {
-    if (guiState == WATCHFACE_STATE) {
-      //Up and Down switch watch faces
-      uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
-      if (wakeupBit & UP_BTN_MASK) {
-        ditheringValue += 0.1;
-        if (ditheringValue > 1.0 ) { ditheringValue = 1.0; }
-        RTC.read(currentTime);
-        showWatchFace(true);
-        return;
+void CityWeather::handleButtonPress()
+{
+  if (guiState == WATCHFACE_STATE)
+  {
+    // Up and Down switch watch faces
+    uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
+    if (wakeupBit & UP_BTN_MASK)
+    {
+      ditheringValue += 0.1;
+      if (ditheringValue > 1.0)
+      {
+        ditheringValue = 1.0;
       }
-      if (wakeupBit & DOWN_BTN_MASK) {
-        ditheringValue -= 0.1;
-        if (ditheringValue < -1.0 ) { ditheringValue = -1.0; }
-        RTC.read(currentTime);
-        showWatchFace(true);
-        return;
+      RTC.read(currentTime);
+      showWatchFace(true);
+      return;
+    }
+    if (wakeupBit & DOWN_BTN_MASK)
+    {
+      ditheringValue -= 0.1;
+      if (ditheringValue < -1.0)
+      {
+        ditheringValue = -1.0;
       }
-      if (wakeupBit & BACK_BTN_MASK) {
-        // light = !light;
-        RTC.read(currentTime);
-        showWatchFace(true);
-        return;
-      } 
-      if (wakeupBit & MENU_BTN_MASK) {
-        Watchy::handleButtonPress();
-        return;
-      }
-    } else {Watchy::handleButtonPress();}
-    return;
+      RTC.read(currentTime);
+      showWatchFace(true);
+      return;
+    }
+    if (wakeupBit & BACK_BTN_MASK)
+    {
+      // light = !light;
+      RTC.read(currentTime);
+      showWatchFace(true);
+      return;
+    }
+    if (wakeupBit & MENU_BTN_MASK)
+    {
+      Watchy::handleButtonPress();
+      return;
+    }
+  }
+  else
+  {
+    Watchy::handleButtonPress();
+  }
+  return;
 }
 
-void CityWeather::drawTime(){
-    String timeStr =
-        (currentTime.Hour < 10 ? "0" : "") + String(currentTime.Hour) + ":" +
-        (currentTime.Minute < 10 ? "0" : "") + String(currentTime.Minute);
+void CityWeather::drawTime()
+{
+  String timeStr =
+      (currentTime.Hour < 10 ? "0" : "") + String(currentTime.Hour) + ":" +
+      (currentTime.Minute < 10 ? "0" : "") + String(currentTime.Minute);
 
-     drawOutlinedText(display, -1, 17, timeStr, &FreeSansBold12pt7b, GxEPD_YELLOW);
+  drawOutlinedText(display, -1, 17, timeStr, &FreeSansBold12pt7b, GxEPD_YELLOW);
 }
 
-void CityWeather::drawBattery(){
-    display.drawBitmap(175, 1, battery, 24, 16, 1);
-    display.setFont();
-    display.setTextColor(GxEPD_WHITE);
-    display.setCursor(177, 5);
-    float voltage = getBatteryVoltage();
-    int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
-    String batteryStr =  String(batteryPercent);
-    if (batteryPercent < 100) batteryStr = batteryStr + "%";
-    display.print(batteryStr);
+void CityWeather::drawBattery()
+{
+  display.drawBitmap(175, 1, battery, 24, 16, 1);
+  display.setFont();
+  display.setTextColor(GxEPD_WHITE);
+  display.setCursor(177, 5);
+  float voltage = getBatteryVoltage();
+  int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
+  String batteryStr = String(batteryPercent);
+  if (batteryPercent < 100)
+    batteryStr = batteryStr + "%";
+  display.print(batteryStr);
 }
 
-void CityWeather::drawSky() {
-    drawStuckiDitherRect(display, 0, 0, 200, 94, ditheringValue);
+void CityWeather::drawSky()
+{
+  drawStuckiDitherRect(display, 0, 0, 200, 94, ditheringValue);
 }
 
-void CityWeather::drawCity(){
-    display.drawBitmap(0, 28, city, 200, 65, 1);
-    display.drawBitmap(-1, 29, city, 200, 65, 1);
-    display.drawBitmap(1, 29, city, 200, 65, 1);
-    display.drawBitmap(0, 29, city, 200, 65, 0);
+void CityWeather::drawCity()
+{
+  display.drawBitmap(0, 28, city, 200, 65, 1);
+  display.drawBitmap(-1, 29, city, 200, 65, 1);
+  display.drawBitmap(1, 29, city, 200, 65, 1);
+  display.drawBitmap(0, 29, city, 200, 65, 0);
 }
-
 
 void CityWeather::drawWatchFace()
 {
-    display.fillScreen(GxEPD_WHITE);
+  display.fillScreen(GxEPD_WHITE);
 
-    drawSky();
-    drawCity();
+  drawSky();
+  drawCity();
 
-    drawTime();
-    drawBattery();
+  drawTime();
+  drawBattery();
 
-    display.setTextColor(0);
-    display.setTextWrap(false);
+  display.setTextColor(0);
+  display.setTextWrap(false);
+  display.setFont(&FreeSansBold9pt7b);
+
+
+  display.drawLine(1, 130, 198, 130, 0);
+
+  drawLine (display, 29, 95, 29, 212, 0);
+  
+  drawLine (display, 57, 95, 57, 212, 0);
+  drawLine (display, 85, 95, 85, 212, 0);
+  drawLine (display, 85, 95, 85, 212, 0);
+  drawLine (display, 141, 95, 141, 212, 0);
+  drawLine (display, 169, 95, 169, 212, 0);
+
+  display.fillRect (1, 94, 200, 13, GxEPD_BLACK);
+
+  // drawStuckiDitherRectConst (display, 1, 95, 199, 108, 0.5);
+
+
+  display.drawLine(0, 95, 0, 211, 0);
+  display.drawLine(199, 95, 199, 212, 0);
+  display.drawLine(198, 199, 1, 199, 0);
+
+  // int x = 1;
+  // int y = 172;
+  // float xScale = 33;
+  // float yScale = 1.2;
+
+  // std::vector<int> valuesDay = {4, 6, 10, 5, 14, 14, 10};
+  // std::vector<int> valuesNight = {-3, -8, -3, 2, 3, 2, 2};
+  // drawTwoSplines(display, valuesDay, valuesNight, x, y, xScale, yScale);
+
+  CityWeatherService cityWeatherService(*this);
+  cityWeatherService.updateWifiData();
+
+  DailyForecast currentWeek[7];
+  cityWeatherService.getCurrentWeekForecast(currentWeek);
+  
+  for (int i = 0; i < 7; i++)
+  {
+     display.setFont();
+     display.setTextColor(GxEPD_WHITE);
+
+    // weekday
+    display.setCursor(11+i*28, 98);
+    display.print(currentWeek[i].weekDay);
+
     display.setFont(&FreeSansBold9pt7b);
-    display.setCursor(32, 122);
-    display.print("29");
-    
-    display.setCursor(4, 122);
-    display.print("28");
-    
-    display.setCursor(61, 122);
-    display.print("30");
-    
-    display.setCursor(95, 122);
-    display.print("1");
-    
-    display.setCursor(122, 122);
-    display.print("2");
-    
-    display.setCursor(150, 122);
-    display.print("3");
-    
-    display.setCursor(178, 122);
-    display.print("4");
-    
-    display.setCursor(60, 164);
-    display.print("10");
-    
-    display.setCursor(94, 164);
-    display.print("5");
-    
-    display.setCursor(116, 164);
-    display.print("14");
-    
-    display.setCursor(145, 164);
-    display.print("14");
-    
-    display.setCursor(9, 164);
-    display.print("4");
-    
-    display.setCursor(38, 164);
-    display.print("6");
-    
-    display.drawLine(169, 95, 169, 212, 0);
-    
-    display.setCursor(174, 164);
-    display.print("10");
-    
-    display.drawLine(57, 95, 57, 212, 0);
-    
-    display.drawLine(29, 95, 29, 212, 0);
-    
-    display.drawLine(85, 95, 85, 212, 0);
-    
-    display.drawBitmap(124, 3, image_download__copy__bits, 15, 16, 0);
-    
-    display.drawLine(113, 95, 113, 212, 0);
-    
-    display.drawLine(141, 95, 141, 212, 0);
-    
-    display.drawLine(1, 126, 198, 126, 0);
+    display.setTextColor(GxEPD_BLACK);
 
-    display.drawBitmap(175, 129, image_download_bits, 17, 16, 0);
+    // day
+    display.setCursor(4+i*28, 123);
+    int day = currentWeek[i].date % 100;
+    display.print(day);
 
-    display.drawBitmap(37, 129, image_download__copy__bits, 15, 16, 0);
+    // weather
+    display.drawBitmap(8+i*28, 135, image_download__copy__bits, 15, 16, 0);
 
-    display.drawBitmap(8, 129, image_download__copy__bits, 15, 16, 0);
+    // t max
+    display.setCursor(7+i*28, 170);
+    display.print(currentWeek[i].tempMax);
 
-    
-    display.setFont();
-    display.setCursor(10, 98);
-    display.print("Mo");
-    
-    display.setCursor(38, 98);
-    display.print("Tu");
-    
-    display.setCursor(66, 98);
-    display.print("We");
-    
-    display.setCursor(94, 98);
-    display.print("Th");
-    
-    display.setCursor(123, 98);
-    display.print("Fr");
-    
-    display.setCursor(151, 98);
-    display.print("Sa");
-    
-    display.setCursor(179, 98);
-    display.print("Su");
-    
-    display.drawLine(0, 95, 0, 211, 0);
-    
-    display.drawLine(199, 95, 199, 212, 0);
-    
-    display.setFont(&FreeSansBold9pt7b);
-    display.setCursor(7, 189);
-    display.print("-3");
-    
-    display.drawBitmap(147, 129, image_download_bits, 17, 16, 0);
-    
-    display.setCursor(35, 189);
-    display.print("-8");
-    
-    display.drawBitmap(91, 129, image_download_bits, 17, 16, 0);
-    
-    display.setCursor(63, 189);
-    display.print("-3");
-    
-    display.drawBitmap(119, 129, image_download_bits, 17, 16, 0);
-    
-    display.setCursor(94, 189);
-    display.print("2");
-    
-    display.drawBitmap(62, 128, image_download__copy__1_bits, 17, 16, 0);
-    
-    display.setCursor(122, 189);
-    display.print("3");
-    
-    display.setCursor(150, 189);
-    display.print("2");
-    
-    display.setCursor(180, 189);
-    display.print("2");
-    
-    display.drawLine(198, 199, 1, 199, 0);
+    // t min
+    display.setCursor(10+i*28, 194);
+    display.print(currentWeek[i].tempMin);
+  }
 
-    int x = 1;
-    int y = 172;
-    float xScale = 33;
-    float yScale = 1.2;
+};
 
-    std::vector<int> valuesDay = {4, 6, 10, 5, 14, 14, 10};
-    std::vector<int> valuesNight = {-3, -8, -3, 2, 3, 2, 2};
-    drawTwoSplines(display, valuesDay, valuesNight, x, y, xScale, yScale);
+//     void CityWeatherService::printWeekTable()
+// {
+//     // 1) Заголовок: дни недели
+//     for (int i = 0; i < 7; i++)
+//     {
+//         Serial.print(wdayNames[i]);
+//         if (i < 6)
+//             Serial.print(" ");
+//     }
+//     Serial.println();
 
-    CityWeatherService cityWeatherService(*this);
-    if (cityWeatherService.updateWifiData())
-    {
-        cityWeatherService.getCurrentWeekForecast();
-        cityWeatherService.printWeekTable();
-    };
-    
-}
+//     // 2) Число месяца (из поля date = YYYYMMDD)
+//     for (int i = 0; i < 7; i++) {
+//         int day = currentWeek[i].date % 100;  // отбрасываем YYYYMM
+//         Serial.print(day);
+//         if (i < 6) Serial.print(" ");
+//     }
+//     Serial.println();
+
+//     // 3) Коды погоды
+//     for (int i = 0; i < 7; i++)
+//     {
+//         Serial.print(weatherNameFromCode(currentWeek[i].weather_code));
+//         if (i < 6)
+//             Serial.print(" ");
+//     }
+//     Serial.println();
+
+//     // 4) Максимумы
+//     for (int i = 0; i < 7; i++)
+//     {
+//         Serial.print(currentWeek[i].temp_max);
+//         if (i < 6)
+//             Serial.print(" ");
+//     }
+//     Serial.println();
+
+//     // 5) Минимумы
+//     for (int i = 0; i < 7; i++)
+//     {
+//         Serial.print(currentWeek[i].temp_min);
+//         if (i < 6)
+//             Serial.print(" ");
+//     }
+//     Serial.println();
+// };

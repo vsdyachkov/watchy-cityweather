@@ -12,10 +12,11 @@ struct LocationData
 
 struct DailyForecast
 {
+    const char * weekDay;
     long date;
-    int temp_max;
-    int temp_min;
-    int weather_code;
+    int tempMax;
+    int tempMin;
+    int weatherCode;
 };
 
 
@@ -26,8 +27,8 @@ public:
     explicit CityWeatherService(CityWeather &cw);
 
     bool updateWifiData();
-    void getCurrentWeekForecast();
-    void printWeekTable();
+    void getCurrentWeekForecast(DailyForecast weekDay[7]);
+    // void printWeekTable();
 
 private:
     CityWeather &cityWeather;
