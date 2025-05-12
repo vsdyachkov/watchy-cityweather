@@ -231,7 +231,7 @@ void CityWeather::drawWatchFace()
       fillRect(display, 1+i*28, 105, 28, 200-105);
     }
 
-    if (i < 7) {
+    if (i > 0) {
       drawLine (display, 1+i*28, 95, 1+i*28, 200);
     }
     
@@ -247,7 +247,8 @@ void CityWeather::drawWatchFace()
     printCentered (display, (String)day, (i * 28) + 14, 132);
 
     // weather
-    display.drawBitmap(8+i*28, 140, image_download__copy__bits, 15, 16, GxEPD_BLACK);
+    drawOutlinedBitmap(display, 8+i*28, 140, image_download__copy__bits, 15, 16, GxEPD_BLACK);
+    // display.drawBitmap(8+i*28, 140, image_download__copy__bits, 15, 16, GxEPD_BLACK);
 
     // tMax & tMin
     display.setFont(&FreeSans9pt7b);
@@ -257,8 +258,8 @@ void CityWeather::drawWatchFace()
 
   drawLine (display, 0, 135, 200, 135, 0, 4); // day bottom
 
-  display.drawLine(0, 105, 0, 200, GxEPD_BLACK);
-  display.drawLine(199, 105, 199, 200, GxEPD_BLACK);
-  display.drawLine(1, 199, 200, 199, GxEPD_BLACK);
+  // display.drawLine(0, 105, 0, 200, GxEPD_BLACK);
+  // display.drawLine(199, 105, 199, 200, GxEPD_BLACK);
+  // display.drawLine(1, 199, 200, 199, GxEPD_BLACK);
 
 };

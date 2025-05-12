@@ -1,5 +1,20 @@
 #include <Watchy.h>
 
+void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const uint8_t bitmap[], int16_t w, int16_t h, uint16_t color) {
+  int borderColor = color == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
+  
+  d.setTextColor(borderColor);
+  for (int8_t dx = -1; dx <= 1; dx++) {
+    for (int8_t dy = -1; dy <= 1; dy++) {
+      if (dx != 0 || dy != 0) {
+        d.drawBitmap(x + dx, y + dy, bitmap, w, h, borderColor);
+      }
+    }
+  }
+
+  d.drawBitmap(x, y, bitmap, w, h, color);
+}
+
 void drawOutlinedText(Adafruit_GFX &d, int16_t x, int16_t y, const String &text, int textColor) {
 
   int borderColor = textColor == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
