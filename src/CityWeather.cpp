@@ -7,8 +7,6 @@
 #include "CityWeather.h"
 #include "CityWeatherService.h"
 
-RTC_DATA_ATTR float ditheringValue = 0.0;
-
 /*
 #define STEPSGOAL 5000
 
@@ -17,30 +15,7 @@ const uint8_t WEATHER_ICON_HEIGHT = 32;
 
 RTC_DATA_ATTR uint8_t vaultBoyNum;
 
-void WatchyPipBoy::drawWatchFace(){
-    //top menu bar
-    display.fillScreen(DARKMODE ? GxEPD_BLACK : GxEPD_WHITE);
-    display.setFont(&monofonto8pt7b);
-    display.setTextColor(DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    display.setCursor(22, 14);
-    display.print("STAT  INV  DATA  MAP");
-    display.drawBitmap(0, 10, menubar, 200, 9, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
 
-    //bottom text
-    display.setFont(&monofonto8pt7b);
-    display.setCursor(10, 195);
-    display.println("PIP-BOY 3000 ROBCO IND.");
-
-    drawTime();
-    drawDate();
-    drawSteps();
-    drawWeather();
-    drawBattery();
-    // display.drawBitmap(120, 77, WIFI_CONFIGURED ? wifi : wifioff, 26, 18, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    // if(BLE_CONFIGURED){
-    //     display.drawBitmap(100, 75, bluetooth, 13, 21, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    // }
-}
 
 void WatchyPipBoy::drawSteps(){
     // reset step counter at midnight
@@ -101,63 +76,7 @@ void WatchyPipBoy::drawWeather(){
     return;
     display.drawBitmap(5, 85, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
 }
-    */
-
-static const unsigned char PROGMEM image_download_bits[] = {0x00, 0x00, 0x00, 0x07, 0xc0, 0x00, 0x08, 0x20, 0x00, 0x10, 0x10, 0x00, 0x30, 0x08, 0x00, 0x40, 0x0e, 0x00, 0x80, 0x01, 0x00, 0x80, 0x00, 0x80, 0x40, 0x00, 0x80, 0x3f, 0xff, 0x00, 0x01, 0x10, 0x00, 0x22, 0x22, 0x00, 0x44, 0x84, 0x00, 0x91, 0x28, 0x00, 0x22, 0x40, 0x00, 0x00, 0x80, 0x00};
-
-static const unsigned char PROGMEM image_download_1_bits[] = {0x01, 0xf0, 0x00, 0x06, 0x0c, 0x00, 0x18, 0x03, 0x00, 0x21, 0xf0, 0x80, 0x46, 0x0c, 0x40, 0x88, 0x02, 0x20, 0x10, 0xe1, 0x00, 0x23, 0x18, 0x80, 0x04, 0x04, 0x00, 0x08, 0x42, 0x00, 0x01, 0xb0, 0x00, 0x02, 0x08, 0x00, 0x00, 0x40, 0x00, 0x00, 0xa0, 0x00, 0x00, 0x40, 0x00, 0x00, 0x00, 0x00};
-
-static const unsigned char PROGMEM image_download__copy__bits[] = {0x01, 0x00, 0x21, 0x08, 0x10, 0x10, 0x03, 0x80, 0x8c, 0x62, 0x48, 0x24, 0x10, 0x10, 0x10, 0x10, 0x10, 0x10, 0x48, 0x24, 0x8c, 0x62, 0x03, 0x80, 0x10, 0x10, 0x21, 0x08, 0x01, 0x00, 0x00, 0x00};
-
-static const unsigned char PROGMEM image_download__copy__1_bits[] = {0x00, 0x20, 0x00, 0x02, 0x02, 0x00, 0x00, 0x70, 0x00, 0x01, 0x8c, 0x00, 0x09, 0x04, 0x80, 0x02, 0x02, 0x00, 0x02, 0x02, 0x00, 0x07, 0x82, 0x00, 0x08, 0x44, 0x80, 0x10, 0x2c, 0x00, 0x30, 0x30, 0x00, 0x60, 0x1e, 0x00, 0x80, 0x03, 0x00, 0x80, 0x01, 0x00, 0x80, 0x01, 0x00, 0x7f, 0xfe, 0x00};
-
-void CityWeather::handleButtonPress()
-{
-  if (guiState == WATCHFACE_STATE)
-  {
-    // Up and Down switch watch faces
-    uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
-    if (wakeupBit & UP_BTN_MASK)
-    {
-      ditheringValue += 0.1;
-      if (ditheringValue > 1.0)
-      {
-        ditheringValue = 1.0;
-      }
-      RTC.read(currentTime);
-      showWatchFace(true);
-      return;
-    }
-    if (wakeupBit & DOWN_BTN_MASK)
-    {
-      ditheringValue -= 0.1;
-      if (ditheringValue < -1.0)
-      {
-        ditheringValue = -1.0;
-      }
-      RTC.read(currentTime);
-      showWatchFace(true);
-      return;
-    }
-    if (wakeupBit & BACK_BTN_MASK)
-    {
-      // light = !light;
-      RTC.read(currentTime);
-      showWatchFace(true);
-      return;
-    }
-    if (wakeupBit & MENU_BTN_MASK)
-    {
-      Watchy::handleButtonPress();
-      return;
-    }
-  }
-  else
-  {
-    Watchy::handleButtonPress();
-  }
-  return;
-}
+*/
 
 void CityWeather::drawTime()
 {
@@ -206,20 +125,25 @@ void CityWeather::drawWatchFace()
   drawTime();
   drawBattery();
 
-  // int x = 1;
-  // int y = 172;
-  // float xScale = 33;
-  // float yScale = 1.2;
-
-  // std::vector<int> valuesDay = {4, 6, 10, 5, 14, 14, 10};
-  // std::vector<int> valuesNight = {-3, -8, -3, 2, 3, 2, 2};
-  // drawTwoSplines(display, valuesDay, valuesNight, x, y, xScale, yScale);
+  display.drawBitmap(64, 2, wifi, 19, 16, 0);
+  display.drawBitmap(88, 2, geolocation, 13, 16, 0);
+  display.drawBitmap(105, 2, ntp, 13, 16, 0);
+  display.drawBitmap(122, 1, weather, 15, 16, 0);
 
   CityWeatherService cityWeatherService(*this);
   cityWeatherService.updateWifiData();
 
   DailyForecast currentWeek[7];
   cityWeatherService.getCurrentWeekForecast(currentWeek);
+
+  // int x = 1;
+  // int y = 168;
+  // float xScale = 33;
+  // float yScale = 2.0;
+
+  // std::vector<int> valuesDay = {4, 6, 10, 5, 14, 14, 10};
+  // std::vector<int> valuesNight = {-3, -8, -3, 2, 3, 2, 2};
+  // drawTwoSplines(display, valuesDay, valuesNight, x, y, xScale, yScale);
   
   for (int i = 0; i < 7; i++)
   {
@@ -247,8 +171,7 @@ void CityWeather::drawWatchFace()
     printCentered (display, (String)day, (i * 28) + 14, 132);
 
     // weather
-    drawOutlinedBitmap(display, 8+i*28, 140, image_download__copy__bits, 15, 16, GxEPD_BLACK);
-    // display.drawBitmap(8+i*28, 140, image_download__copy__bits, 15, 16, GxEPD_BLACK);
+    drawOutlinedBitmap(display, 8+i*28, 140, sun, 15, 16, GxEPD_BLACK);
 
     // tMax & tMin
     display.setFont(&FreeSans9pt7b);
@@ -257,9 +180,5 @@ void CityWeather::drawWatchFace()
   }
 
   drawLine (display, 0, 135, 200, 135, 0, 4); // day bottom
-
-  // display.drawLine(0, 105, 0, 200, GxEPD_BLACK);
-  // display.drawLine(199, 105, 199, 200, GxEPD_BLACK);
-  // display.drawLine(1, 199, 200, 199, GxEPD_BLACK);
 
 };
