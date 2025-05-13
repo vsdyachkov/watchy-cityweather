@@ -1,19 +1,22 @@
 #pragma once
 #include <Watchy.h>
-class CityWeatherService;
+#include "CityWeatherService.h"
 
 static float ditheringValue = 0.0;
 
 class CityWeather : public Watchy
 {
-    using Watchy::Watchy;
-
-    public:
+    public:             
+        explicit CityWeather(const watchySettings &settings);
         void drawWatchFace();
-        void drawTime();
-        void drawBattery();
-        void drawSky();
+
+        void drawStatusBar();
         void drawCity();
+        void drawCalendar();
+
+    private:
+        CityWeatherService cityWeatherService;
+        
         virtual void handleButtonPress();
 };
 
