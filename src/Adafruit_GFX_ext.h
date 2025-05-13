@@ -4,8 +4,8 @@ void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const uint8_t bit
   int borderColor = color == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
   
   d.setTextColor(borderColor);
-  for (int8_t dx = -1; dx <= 1; dx++) {
-    for (int8_t dy = -1; dy <= 1; dy++) {
+  for (int8_t dx = -2; dx <= 2; dx++) {
+    for (int8_t dy = -2; dy <= 2; dy++) {
       if (dx != 0 || dy != 0) {
         d.drawBitmap(x + dx, y + dy, bitmap, w, h, borderColor);
       }
@@ -19,8 +19,8 @@ void drawOutlinedText(Adafruit_GFX &d, int16_t x, int16_t y, const String &text,
 
   int borderColor = textColor == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
   d.setTextColor(borderColor);
-  for (int8_t dx = -1; dx <= 1; dx++) {
-    for (int8_t dy = -1; dy <= 1; dy++) {
+  for (int8_t dx = -2; dx <= 2; dx++) {
+    for (int8_t dy = -2; dy <= 2; dy++) {
       if (dx != 0 || dy != 0) {
         d.setCursor(x + dx, y + dy);
         d.print(text);
