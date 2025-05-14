@@ -1,6 +1,7 @@
 #include <vector>
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
+#include "FreeMonoBold7pt7b.h"
 #include <Fonts/FreeMono9pt7b.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
@@ -9,7 +10,7 @@
 
 CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), cityWeatherService(*this) {}
 
-RTC_DATA_ATTR float ditheringValue = 0.0f;
+RTC_DATA_ATTR float ditheringValue = 0.3f;
 
 /*
 #define STEPSGOAL 5000
@@ -87,6 +88,7 @@ void CityWeather::changeSkyDithering(float d)
   ditheringValue += d;
   ditheringValue = constrain (ditheringValue, -1.0, 1.0);
   Serial.println(ditheringValue);
+  RTC.read(currentTime);
   showWatchFace(true);
 }
 
@@ -102,10 +104,10 @@ void CityWeather::drawStatusBar()
   display.setCursor(-1, 17);
   display.print(timeStr);
 
-  display.drawBitmap(64, 2, wifi, 19, 16, 0);
-  display.drawBitmap(88, 2, geolocation, 13, 16, 0);
-  display.drawBitmap(105, 2, ntp, 13, 16, 0);
-  display.drawBitmap(122, 1, weather, 15, 16, 0);
+  // display.drawBitmap(64, 2, wifi, 19, 16, 0);
+  // display.drawBitmap(88, 2, geolocation, 13, 16, 0);
+  // display.drawBitmap(105, 2, ntp, 13, 16, 0);
+  // display.drawBitmap(122, 1, weather, 15, 16, 0);
 
   // battery
   display.drawBitmap(143, 1, battery, 9, 15, GxEPD_BLACK);
@@ -130,6 +132,19 @@ void CityWeather::drawCity()
   display.drawBitmap(0, y, city, 200, 65, 0);
 }
 
+void CityWeather::printTemperature(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y)
+{
+  if (text.length() > 2) {
+    d.setFont(&FreeMonoBold7pt7b);
+    y--;
+  } else  {
+    d.setFont(&FreeMonoBold9pt7b);
+    centerX--;
+  }
+
+  printCentered (display, text, centerX, y);
+}
+
 void CityWeather::drawCalendar()
 {
   DailyForecast currentWeek[7];
@@ -152,10 +167,9 @@ void CityWeather::drawCalendar()
     uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
     if (currentWeek[i].date == today)
     {
-      display.drawFastVLine (1 + i * 28, 105, 200-105, GxEPD_BLACK);
-      display.drawFastVLine (1 + i * 28 + 28, 105, 200-105, GxEPD_BLACK);
-      
-      fillRect(display, 1 + i * 28, 105, 27, 200 - 105, GxEPD_BLACK, 2);
+      display.drawFastVLine (i * 28 + 1, 105, 200-105, GxEPD_BLACK);
+      display.drawFastVLine (i * 28 + 29, 105, 200-105, GxEPD_BLACK);
+      fillRect(display, 1 + i * 28, 105, 28, 200 - 105, GxEPD_BLACK, 2);
     }
 
     // lines between days
@@ -163,29 +177,30 @@ void CityWeather::drawCalendar()
     {
       drawLine(display, 1 + i * 28, 95, 1 + i * 28, 200);
     }
+    
+    display.setTextColor(GxEPD_BLACK);
 
     // weekday
     display.setFont();
-    display.setTextColor(GxEPD_BLACK);
     printCentered(display, currentWeek[i].weekDay, (i * 28) + 16, 108);
 
     // day
-    display.setTextColor(GxEPD_BLACK);
     display.setFont(&FreeMonoBold9pt7b);
     int day = currentWeek[i].date % 100;
-    printCentered(display, (String)day, (i * 28) + 13, 132);
-
+    printCentered(display, (String)day, (i * 28) + 13, 129);
+    
     // weather
     const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
-    drawOutlinedBitmap(display, 7 + i * 28, 140, weatherIcon, 17, 17, GxEPD_BLACK);
+    display.drawBitmap(i * 28 + 3, 136, weatherIcon, 25, 25, GxEPD_BLACK, GxEPD_WHITE);
+    drawLine(display, i*28 + 2, 135, i*28 + 29, 135, GxEPD_WHITE, 1); // top border
+    drawLine(display, i*28 + 2, 161, i*28 + 29, 161, GxEPD_WHITE, 1); // bottom border
 
     // tMax & tMin
-    // display.setFont(&FreeMono9pt7b);
-    printCentered(display, (String)currentWeek[i].tempMax, (i * 28) + 13, 175);
-    printCentered(display, (String)currentWeek[i].tempMin, (i * 28) + 13, 195);
+    printTemperature (display, (String)currentWeek[i].tempMax, (i * 28) + 14, 177);
+    printTemperature (display, (String)currentWeek[i].tempMin, (i * 28) + 14, 195);
   }
 
-  drawLine(display, 0, 135, 200, 135, 0, 4); // day bottom
+  drawLine(display, 0, 133, 200, 133, GxEPD_BLACK, 4); // day bottom
 }
 
 void CityWeather::drawWatchFace()
