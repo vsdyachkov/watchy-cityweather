@@ -11,5 +11,5 @@ This Watchface uses a WiFi connection to automatically determine the approximate
 
 Services are used:
 
-- http://ipwho.is
-- https://api.open-meteo.com
+- https://ipwhois.io
+- https://open-meteo.com
