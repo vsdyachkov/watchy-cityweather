@@ -1,6 +1,6 @@
 #include <Watchy.h>
 
-void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const uint8_t bitmap[], int16_t w, int16_t h, uint16_t color) {
+void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const unsigned char* bitmap , int16_t w, int16_t h, uint16_t color) {
   int borderColor = color == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
   
   d.setTextColor(borderColor);

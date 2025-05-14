@@ -1,5 +1,6 @@
 #include "CityWeatherService.h"
 #include "CityWeather.h"
+#include "Images.h"
 
 #define IP_WHO_URL "http://ipwho.is/?fields=region,latitude,longitude,timezone.offset"
 #define OPEN_METEO_URL "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&past_days=7&forecast_days=16&timezone=auto"
@@ -221,50 +222,50 @@ void CityWeatherService::getCurrentWeekForecast(DailyForecast currentWeek[7])
     }
 }
 
-String CityWeatherService::weatherNameFromCode(int code)
+const unsigned char* CityWeatherService::weatherNameFromCode(int code)
 {
     switch (code)
     {
     case 0:
-        return "Sun";
+        return sun;
     case 1:
     case 2:
     case 3:
-        return "CloudSun";
+        return cloudSun;
     case 45:
     case 8:
-        return "Fog";
+        return fog;
     case 51:
     case 53:
     case 55:
     case 61:
     case 63:
     case 65:
-        return "Rain";
+        return rain;
     case 80:
     case 81:
     case 82:
-        return "RainShowers";
+        return rainShowers;
     case 66:
     case 67:
-        return "FreezingRain";
+        return freezingRain;
     case 56:
     case 57:
     case 71:
     case 73:
     case 75:
-        return "Snow";
+        return snow;
     case 77:
     case 85:
     case 86:
-        return "SnowShowers";
+        return snowShowers;
     case 95:
-        return "Thunderstorm";
+        return thunderstorm;
     case 96:
     case 99:
-        return "ThunderstormHail";
+        return thunderstormHail;
     default:
-        return "Sun";
+        return sun;
     }
 }
 
