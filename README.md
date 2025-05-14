@@ -13,8 +13,8 @@ This Watchface uses a WiFi connection to automatically determine the approximate
 
 Web services are used:
 
-- https://ipwhois.io
-- https://open-meteo.com
+- https://ipwhois.io - Service for determining ownership information by IP address
+- https://open-meteo.com - Open-source weather API
 
 Tools were used:
 
