@@ -1,13 +1,15 @@
 #include <vector>
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
-#include <Fonts/FreeSans9pt7b.h>
-#include <Fonts/FreeSansBold9pt7b.h>
+#include <Fonts/FreeMono9pt7b.h>
+#include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include "CityWeather.h"
 #include "CityWeatherService.h"
 
 CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), cityWeatherService(*this) {}
+
+RTC_DATA_ATTR float ditheringValue = 0.0f;
 
 /*
 #define STEPSGOAL 5000
@@ -80,6 +82,14 @@ void WatchyPipBoy::drawWeather(){
 }
 */
 
+void CityWeather::changeSkyDithering(float d)
+{
+  ditheringValue += d;
+  ditheringValue = constrain (ditheringValue, -1.0, 1.0);
+  Serial.println(ditheringValue);
+  showWatchFace(true);
+}
+
 void CityWeather::drawStatusBar()
 {
   // time
@@ -100,7 +110,7 @@ void CityWeather::drawStatusBar()
   // battery
   display.drawBitmap(143, 1, battery, 9, 15, GxEPD_BLACK);
   display.setTextColor(GxEPD_BLACK);
-  display.setFont(&FreeSansBold9pt7b);
+  display.setFont(&FreeMonoBold9pt7b);
   float voltage = getBatteryVoltage();
   int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
   String batteryStr = String(batteryPercent) + "%";
@@ -142,9 +152,13 @@ void CityWeather::drawCalendar()
     uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
     if (currentWeek[i].date == today)
     {
-      fillRect(display, 1 + i * 28, 105, 28, 200 - 105);
+      display.drawFastVLine (1 + i * 28, 105, 200-105, GxEPD_BLACK);
+      display.drawFastVLine (1 + i * 28 + 28, 105, 200-105, GxEPD_BLACK);
+      
+      fillRect(display, 1 + i * 28, 105, 27, 200 - 105, GxEPD_BLACK, 2);
     }
 
+    // lines between days
     if (i > 0)
     {
       drawLine(display, 1 + i * 28, 95, 1 + i * 28, 200);
@@ -153,21 +167,22 @@ void CityWeather::drawCalendar()
     // weekday
     display.setFont();
     display.setTextColor(GxEPD_BLACK);
-    printCentered(display, currentWeek[i].weekDay, (i * 28) + 17, 108);
+    printCentered(display, currentWeek[i].weekDay, (i * 28) + 16, 108);
 
     // day
     display.setTextColor(GxEPD_BLACK);
-    display.setFont(&FreeSansBold9pt7b);
+    display.setFont(&FreeMonoBold9pt7b);
     int day = currentWeek[i].date % 100;
-    printCentered(display, (String)day, (i * 28) + 14, 132);
+    printCentered(display, (String)day, (i * 28) + 13, 132);
 
     // weather
-    drawOutlinedBitmap(display, 8 + i * 28, 140, sun, 15, 16, GxEPD_BLACK);
+    const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
+    drawOutlinedBitmap(display, 7 + i * 28, 140, weatherIcon, 17, 17, GxEPD_BLACK);
 
     // tMax & tMin
-    display.setFont(&FreeSans9pt7b);
-    printCentered(display, (String)currentWeek[i].tempMax, (i * 28) + 14, 175);
-    printCentered(display, (String)currentWeek[i].tempMin, (i * 28) + 14, 195);
+    // display.setFont(&FreeMono9pt7b);
+    printCentered(display, (String)currentWeek[i].tempMax, (i * 28) + 13, 175);
+    printCentered(display, (String)currentWeek[i].tempMin, (i * 28) + 13, 195);
   }
 
   drawLine(display, 0, 135, 200, 135, 0, 4); // day bottom

@@ -2,13 +2,12 @@
 #include <Watchy.h>
 #include "CityWeatherService.h"
 
-static float ditheringValue = 0.0;
-
 class CityWeather : public Watchy
 {
     public:             
         explicit CityWeather(const watchySettings &settings);
         void drawWatchFace();
+        void changeSkyDithering(float d);
 
         void drawStatusBar();
         void drawCity();
@@ -27,29 +26,14 @@ inline void CityWeather::handleButtonPress()
         // Up and Down switch watch faces
         uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
         if (wakeupBit & UP_BTN_MASK)  {
-            ditheringValue += 0.1;
-            if (ditheringValue > 1.0)
-            {
-                ditheringValue = 1.0;
-            }
-            RTC.read(currentTime);
-            showWatchFace(true);
+            changeSkyDithering(0.1);
             return;
         }
         if (wakeupBit & DOWN_BTN_MASK)  {
-            ditheringValue -= 0.1;
-            if (ditheringValue < -1.0)
-            {
-                ditheringValue = -1.0;
-            }
-            RTC.read(currentTime);
-            showWatchFace(true);
+            changeSkyDithering(-0.1);
             return;
         }
-        if (wakeupBit & BACK_BTN_MASK)  {
-            // light = !light;
-            RTC.read(currentTime);
-            showWatchFace(true);
+        if (wakeupBit & BACK_BTN_MASK )  {
             return;
         }
         if (wakeupBit & MENU_BTN_MASK) {

@@ -28,12 +28,12 @@ public:
 
     bool updateWifiData();
     void getCurrentWeekForecast(DailyForecast weekDay[7]);
+    const unsigned char* weatherNameFromCode(int code);
 
 private:
     CityWeather &cityWeather;
 
     bool getLocationData();
-    String weatherNameFromCode(int code);
     bool getWeatherData();
     void sortForecasts(DailyForecast *forecastArray, size_t size);
 };
