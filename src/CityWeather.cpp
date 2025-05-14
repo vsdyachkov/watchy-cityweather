@@ -11,6 +11,8 @@
 CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), cityWeatherService(*this) {}
 
 RTC_DATA_ATTR float ditheringValue = 0.3f;
+const uint8_t WEATHER_ICON_WIDTH = 25;
+const uint8_t WEATHER_ICON_HEIGHT = 25;
 
 /*
 #define STEPSGOAL 5000
@@ -19,7 +21,6 @@ const uint8_t WEATHER_ICON_WIDTH = 48;
 const uint8_t WEATHER_ICON_HEIGHT = 32;
 
 RTC_DATA_ATTR uint8_t vaultBoyNum;
-
 
 
 void WatchyPipBoy::drawSteps(){
@@ -44,43 +45,6 @@ void WatchyPipBoy::drawSteps(){
     display.print(stepCount);
 }
 
-void WatchyPipBoy::drawWeather(){
-
-    weatherData currentWeather = getWeatherData();
-
-    int8_t temperature = currentWeather.temperature;
-    int16_t weatherConditionCode = currentWeather.weatherConditionCode;
-
-    display.setFont(&monofonto10pt7b);
-    display.setTextColor(DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    display.setCursor(12, 133);
-
-
-    display.print(temperature);
-    display.print(currentWeather.isMetric ? "C" : "F");
-    const unsigned char* weatherIcon;
-
-    //https://openweathermap.org/weather-conditions
-    if(weatherConditionCode > 801){//Cloudy
-    weatherIcon = cloudy;
-    }else if(weatherConditionCode == 801){//Few Clouds
-    weatherIcon = cloudsun;
-    }else if(weatherConditionCode == 800){//Clear
-    weatherIcon = sunny;
-    }else if(weatherConditionCode >=700){//Atmosphere
-    weatherIcon = atmosphere;
-    }else if(weatherConditionCode >=600){//Snow
-    weatherIcon = snow;
-    }else if(weatherConditionCode >=500){//Rain
-    weatherIcon = rain;
-    }else if(weatherConditionCode >=300){//Drizzle
-    weatherIcon = drizzle;
-    }else if(weatherConditionCode >=200){//Thunderstorm
-    weatherIcon = thunderstorm;
-    }else
-    return;
-    display.drawBitmap(5, 85, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-}
 */
 
 void CityWeather::changeSkyDithering(float d)
@@ -167,15 +131,15 @@ void CityWeather::drawCalendar()
     uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
     if (currentWeek[i].date == today)
     {
-      display.drawFastVLine (i * 28 + 1, 105, 200-105, GxEPD_BLACK);
-      display.drawFastVLine (i * 28 + 29, 105, 200-105, GxEPD_BLACK);
-      fillRect(display, 1 + i * 28, 105, 28, 200 - 105, GxEPD_BLACK, 2);
+      display.drawFastVLine (i*28 + 1, 105, 200-105, GxEPD_BLACK);
+      display.drawFastVLine (i*28 + 29, 105, 200-105, GxEPD_BLACK);
+      fillRect(display, 1 + i*28, 105, 28, 200 - 105, GxEPD_BLACK, 2);
     }
 
     // lines between days
     if (i > 0)
     {
-      drawLine(display, 1 + i * 28, 95, 1 + i * 28, 200);
+      drawLine(display, 1 + i*28, 95, 1 + i*28, 200);
     }
     
     display.setTextColor(GxEPD_BLACK);
@@ -191,16 +155,16 @@ void CityWeather::drawCalendar()
     
     // weather
     const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
-    display.drawBitmap(i * 28 + 3, 136, weatherIcon, 25, 25, GxEPD_BLACK, GxEPD_WHITE);
+    display.drawBitmap(i*28 + 3, 136, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
     drawLine(display, i*28 + 2, 135, i*28 + 29, 135, GxEPD_WHITE, 1); // top border
     drawLine(display, i*28 + 2, 161, i*28 + 29, 161, GxEPD_WHITE, 1); // bottom border
 
     // tMax & tMin
-    printTemperature (display, (String)currentWeek[i].tempMax, (i * 28) + 14, 177);
-    printTemperature (display, (String)currentWeek[i].tempMin, (i * 28) + 14, 195);
+    printTemperature (display, (String)currentWeek[i].tempMax, (i*28) + 14, 177);
+    printTemperature (display, (String)currentWeek[i].tempMin, (i*28) + 14, 195);
   }
 
-  drawLine(display, 0, 133, 200, 133, GxEPD_BLACK, 4); // day bottom
+  drawLine(display, 1, 133, 199, 133, GxEPD_BLACK, 4); // day bottom
 }
 
 void CityWeather::drawWatchFace()
