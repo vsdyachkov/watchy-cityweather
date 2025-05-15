@@ -3,18 +3,17 @@ CityWeather watchface for Watchy
 
 ![screenshot](./screenshot.png)
 
+CityWeather - [SQFMI Watchy SDK based] watchface displays schematic image and weather for the current week
+
+Features:
+- Geolocation by WiFi via https://ipwhois.io
+- Synchronize date/time (NTP)
+- Weather forecast via https://open-meteo.com
+- No manual IDE settings or API keys are required
+
 [Watchy](https://watchy.sqfmi.com) - Fully Open Source E-Paper Watch 
 
 For install watchface you need [VSCode](https://code.visualstudio.com) + [PlatformIO](https://platformio.org)
-
-Watchface displays schematic image and weather for the current week
-
-This Watchface uses a WiFi connection to automatically determine the approximate location, synchronize the date/time (NTP) and download the weather forecast. No manual IDE settings or API keys are required
-
-Web services are used:
-
-- https://ipwhois.io - Service for determining ownership information by IP address
-- https://open-meteo.com - Open-source weather API
 
 Tools were used:
 
