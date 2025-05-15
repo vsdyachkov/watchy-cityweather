@@ -2,7 +2,8 @@
 #include "CityWeather.h"
 #include "Images.h"
 
-#define IP_WHO_URL "http://ipwho.is/?fields=region,latitude,longitude,timezone.offset"
+#define IP_WHO_URL "http://ipwho.is/51.18.89.78?fields=city,country,latitude,longitude,timezone.offset"
+// #define IP_WHO_URL "http://ipwho.is/?fields=city,country,latitude,longitude,timezone.offset"
 #define OPEN_METEO_URL "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&past_days=7&forecast_days=16&timezone=auto"
 #define OPEN_METEO_UPDATE_INTERVAL 60
 
@@ -36,7 +37,22 @@ bool CityWeatherService::getLocationData()
         }
         // Serial.println(payload);
 
-        locationData.regionName = (const char *)responseObject["region"];
+        auto cityVar = responseObject["city"];
+        if (JSON.typeof(cityVar) == "string") {
+        strncpy(locationData.city,
+                (const char*)cityVar,
+                sizeof(locationData.city) - 1);
+        }
+        locationData.city[sizeof(locationData.city)-1] = '\0';
+
+        auto countryVar = responseObject["country"];
+        if (JSON.typeof(countryVar) == "string") {
+        strncpy(locationData.country,
+                (const char*)countryVar,
+                sizeof(locationData.country) - 1);
+        }
+        locationData.country[sizeof(locationData.country) - 1] = '\0';
+
         locationData.lat = String((double)responseObject["latitude"], 6);
         locationData.lon = String((double)responseObject["longitude"], 6);
         locationData.offset = String((int)responseObject["timezone"]["offset"]);
@@ -53,7 +69,6 @@ bool CityWeatherService::getLocationData()
 
 bool CityWeatherService::getWeatherData()
 {
-
     HTTPClient http;
     http.setConnectTimeout(20000);
     String weatherQueryURL = OPEN_METEO_URL;
@@ -221,6 +236,16 @@ void CityWeatherService::getCurrentWeekForecast(DailyForecast currentWeek[7])
         currentWeek[weekIndex].weekDay = wdayNames[weekIndex];
     }
 }
+
+// locationData CityWeatherService::getLocationCountry()
+// {
+//     return locationData.country;
+// }
+
+// const char * CityWeatherService::getLocationCity()
+// {
+//     return locationData.regionName;
+// }
 
 const unsigned char* CityWeatherService::weatherNameFromCode(int code)
 {

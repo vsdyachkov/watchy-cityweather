@@ -2,9 +2,9 @@
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
 #include "FreeMonoBold7pt7b.h"
-#include <Fonts/FreeMono9pt7b.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
+#include <Fonts/FreeSansBold9pt7b.h>
 #include "CityWeather.h"
 #include "CityWeatherService.h"
 
@@ -86,14 +86,19 @@ void CityWeather::drawStatusBar()
 void CityWeather::drawCity()
 {
   // sky
-  drawStuckiDitherRect(display, 0, 19, 200, 88, ditheringValue);
+  drawStuckiDitherRect(display, 0, 19, 200, 86, ditheringValue);
 
-  // city
-  int y = 40;
+  // city image
+  int y = 39;
   display.drawBitmap(0, y - 1, city, 200, 65, 1);
   display.drawBitmap(-1, y, city, 200, 65, 1);
   display.drawBitmap(1, y, city, 200, 65, 1);
   display.drawBitmap(0, y, city, 200, 65, 0);
+
+  // city & country name
+  display.setFont(&FreeSansBold9pt7b);
+  printCentered (display, locationData.city, 100, 85);
+  printCentered (display, locationData.country, 100, 97);
 }
 
 void CityWeather::printTemperature(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y)
@@ -131,8 +136,8 @@ void CityWeather::drawCalendar()
     uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
     if (currentWeek[i].date == today)
     {
-      display.drawFastVLine (i*28 + 1, 105, 200-105, GxEPD_BLACK);
-      display.drawFastVLine (i*28 + 29, 105, 200-105, GxEPD_BLACK);
+      display.drawFastVLine (i*28 + 1, 104, 200-104, GxEPD_BLACK);
+      display.drawFastVLine (i*28 + 29, 104, 200-104, GxEPD_BLACK);
       fillRect(display, 1 + i*28, 105, 28, 200 - 105, GxEPD_BLACK, 2);
     }
 
@@ -145,26 +150,24 @@ void CityWeather::drawCalendar()
     display.setTextColor(GxEPD_BLACK);
 
     // weekday
-    display.setFont();
-    printCentered(display, currentWeek[i].weekDay, (i * 28) + 16, 108);
+    display.setFont(&FreeMonoBold7pt7b);
+    printCentered(display, currentWeek[i].weekDay, (i*28) + 16, 115);
 
     // day
     display.setFont(&FreeMonoBold9pt7b);
     int day = currentWeek[i].date % 100;
-    printCentered(display, (String)day, (i * 28) + 13, 129);
+    printCentered(display, (String)day, (i*28) + 13, 132);
     
     // weather
     const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
-    display.drawBitmap(i*28 + 3, 136, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
-    drawLine(display, i*28 + 2, 135, i*28 + 29, 135, GxEPD_WHITE, 1); // top border
-    drawLine(display, i*28 + 2, 161, i*28 + 29, 161, GxEPD_WHITE, 1); // bottom border
+    display.drawBitmap(i*28 + 3, 137, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
 
     // tMax & tMin
-    printTemperature (display, (String)currentWeek[i].tempMax, (i*28) + 14, 177);
-    printTemperature (display, (String)currentWeek[i].tempMin, (i*28) + 14, 195);
+    printTemperature (display, (String)currentWeek[i].tempMax, (i*28) + 14, 178);
+    printTemperature (display, (String)currentWeek[i].tempMin, (i*28) + 14, 196);
   }
 
-  drawLine(display, 1, 133, 199, 133, GxEPD_BLACK, 4); // day bottom
+  drawLine(display, 1, 135, 199, 135, GxEPD_BLACK, 2); // day bottom
 }
 
 void CityWeather::drawWatchFace()
