@@ -4,7 +4,8 @@ class CityWeather;
 
 struct LocationData
 {
-    String regionName;
+    char city[15];
+    char country[15];
     String lat;
     String lon;
     String offset;
@@ -19,6 +20,7 @@ struct DailyForecast
     int weatherCode;
 };
 
+extern RTC_DATA_ATTR LocationData locationData;
 
 class CityWeatherService
 {
@@ -28,6 +30,7 @@ public:
 
     bool updateWifiData();
     void getCurrentWeekForecast(DailyForecast weekDay[7]);
+    // const char * getCurrentLocationName();
     const unsigned char* weatherNameFromCode(int code);
 
 private:
