@@ -1,9 +1,7 @@
 # watchy-cityweather
-CityWeather watchface for Watchy
+CityWeather - SQFMI Watchy SDK based watchface for Watchy displays schematic image and weather for the current week
 
 ![screenshot](./screenshot.png)
-
-CityWeather - SQFMI Watchy SDK based watchface displays schematic image and weather for the current week
 
 Features:
 - Geolocation by WiFi via https://ipwhois.io
