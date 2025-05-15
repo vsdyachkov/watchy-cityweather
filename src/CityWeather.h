@@ -9,6 +9,8 @@ class CityWeather : public Watchy
         void drawWatchFace();
         void changeSkyDithering(float d);
         void printTemperature(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y);
+        void printTightCentered(Adafruit_GFX &d, const char *s, int16_t cx, int16_t y, int8_t k, uint16_t color);
+        void printTightCenteredOutlined(Adafruit_GFX &disp, const char *s, int16_t x0, int16_t y, int8_t kerning);
 
         void drawStatusBar();
         void drawCity();
