@@ -2,6 +2,7 @@
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
 #include "FreeMonoBold7pt7b.h"
+#include <Fonts/FreeMono9pt7b.h>
 #include <Fonts/FreeMonoBold9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
@@ -104,7 +105,7 @@ void CityWeather::drawCity()
 void CityWeather::printTemperature(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y)
 {
   if (text.length() > 2) {
-    d.setFont(&FreeMonoBold7pt7b);
+    d.setFont(&FreeMonoBold9pt7b);
     y--;
   } else  {
     d.setFont(&FreeMonoBold9pt7b);
@@ -112,6 +113,39 @@ void CityWeather::printTemperature(Adafruit_GFX &d, const String &text, int16_t 
   }
 
   printCentered (display, text, centerX, y);
+}
+
+void CityWeather::printTightCentered(Adafruit_GFX &d, const char *s, int16_t cx, int16_t y, int8_t k, uint16_t color) {
+  auto f = (GFXfont*)&FreeMonoBold9pt7b;
+  d.setFont(f);
+  d.setTextColor(color);
+  uint8_t fi = f->first, la = f->last;
+  int16_t w = 0, n = 0;
+  for (const char *c = s; *c; c++)
+    if (*c >= fi && *c <= la) {
+      w += f->glyph[*c - fi].xAdvance;
+      n++;
+    }
+  if (n > 1) w += k * (n - 1);
+  int16_t x = cx - w / 2;
+  for (const char *c = s; *c; c++)
+    if (*c >= fi && *c <= la) {
+      d.setCursor(x, y);
+      d.print(*c);
+      x += f->glyph[*c - fi].xAdvance + k;
+    }
+}
+
+void CityWeather::printTightCenteredOutlined(Adafruit_GFX &disp, const char *s, int16_t x0, int16_t y, int8_t kerning) {
+  // 1) Обводка по всем 8 направлениям
+  for (int8_t dy = -2; dy <= 2; dy++) {
+    for (int8_t dx = -2; dx <= 2; dx++) {
+      if (dx == 0 && dy == 0) continue;
+      printTightCentered(disp, s, x0 + dx, y + dy, kerning, GxEPD_WHITE);
+    }
+  }
+  // 2) Сам текст чёрным (или любым другим цветом)
+  printTightCentered(disp, s, x0, y, kerning, GxEPD_BLACK);
 }
 
 void CityWeather::drawCalendar()
@@ -136,17 +170,9 @@ void CityWeather::drawCalendar()
     uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
     if (currentWeek[i].date == today)
     {
-      display.drawFastVLine (i*28 + 1, 104, 200-104, GxEPD_BLACK);
-      display.drawFastVLine (i*28 + 29, 104, 200-104, GxEPD_BLACK);
       fillRect(display, 1 + i*28, 105, 28, 200 - 105, GxEPD_BLACK, 2);
     }
 
-    // lines between days
-    if (i > 0)
-    {
-      drawLine(display, 1 + i*28, 95, 1 + i*28, 200);
-    }
-    
     display.setTextColor(GxEPD_BLACK);
 
     // weekday
@@ -163,9 +189,24 @@ void CityWeather::drawCalendar()
     display.drawBitmap(i*28 + 3, 137, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
 
     // tMax & tMin
-    printTemperature (display, (String)currentWeek[i].tempMax, (i*28) + 14, 178);
-    printTemperature (display, (String)currentWeek[i].tempMin, (i*28) + 14, 196);
+    String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
+    String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
+    printTightCenteredOutlined(display, tMax.c_str(), (i*28) + 14, 178, -3);  // shift = -2 пикселя
+    printTightCenteredOutlined(display, tMin.c_str(), (i*28) + 14, 196, -3);
+
+    // lines between days
+    if (i > 0)
+    {
+      drawLine(display, 1 + i*28, 95, 1 + i*28, 200);
+    }
+
+    if (currentWeek[i].date == today)
+    {
+      display.drawFastVLine (i*28 + 1, 104, 200-104, GxEPD_BLACK);
+      display.drawFastVLine (i*28 + 29, 104, 200-104, GxEPD_BLACK);
+    }
   }
+  
 
   drawLine(display, 1, 135, 199, 135, GxEPD_BLACK, 2); // day bottom
 }
