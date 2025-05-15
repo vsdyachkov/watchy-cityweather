@@ -16,7 +16,7 @@ For install watchface you need [VSCode](https://code.visualstudio.com) + [Platfo
 Tools were used:
 
 - https://watchy.sqfmi.com/docs/create-watchface - Watchy docs
-- https://github.com/sqfmi/Watchy  - Watchy SDK
+- https://github.com/sqfmi/Watchy - SQFMI Watchy SDK
 - https://lopaka.app - UI graphics editor for embedded screens
 - https://javl.github.io/image2cpp - Image to byte array converter
 - https://rop.nl/truetype2gfx - Standard font to Adafruit_GFX font converter
