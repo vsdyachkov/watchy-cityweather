@@ -2,8 +2,8 @@
 #include "CityWeather.h"
 #include "Images.h"
 
-#define IP_WHO_URL "http://ipwho.is/185.156.172.142?fields=city,country,latitude,longitude,timezone.offset"
-// #define IP_WHO_URL "http://ipwho.is/?fields=city,country,latitude,longitude,timezone.offset"
+// #define IP_WHO_URL "http://ipwho.is/185.156.172.142?fields=city,country,latitude,longitude,timezone.offset"
+#define IP_WHO_URL "http://ipwho.is/?fields=city,country,latitude,longitude,timezone.offset"
 #define OPEN_METEO_URL "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&past_days=7&forecast_days=16&timezone=auto"
 #define OPEN_METEO_UPDATE_INTERVAL 60
 
