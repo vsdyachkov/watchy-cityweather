@@ -2,8 +2,8 @@
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
 #include "FreeMonoBold7pt7b.h"
-#include <Fonts/FreeMono9pt7b.h>
-#include <Fonts/FreeMonoBold9pt7b.h>
+#include "OpenSans_CondBold9pt7b.h"
+#include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
 #include <Fonts/FreeSansBold9pt7b.h>
 #include "CityWeather.h"
@@ -86,66 +86,11 @@ void CityWeather::drawStatusBar()
 
 void CityWeather::drawCity()
 {
-  // sky
-  drawStuckiDitherRect(display, 0, 19, 200, 86, ditheringValue);
-
-  // city image
-  int y = 39;
-  display.drawBitmap(0, y - 1, city, 200, 65, 1);
-  display.drawBitmap(-1, y, city, 200, 65, 1);
-  display.drawBitmap(1, y, city, 200, 65, 1);
-  display.drawBitmap(0, y, city, 200, 65, 0);
-
   // city & country name
-  display.setFont(&FreeSansBold9pt7b);
-  printCentered (display, locationData.city, 100, 85);
-  printCentered (display, locationData.country, 100, 97);
-}
+  display.setFont(&OpenSans_CondBold9pt7b);
+  printCentered(display, locationData.city, 153, 78);
 
-void CityWeather::printTemperature(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y)
-{
-  if (text.length() > 2) {
-    d.setFont(&FreeMonoBold9pt7b);
-    y--;
-  } else  {
-    d.setFont(&FreeMonoBold9pt7b);
-    centerX--;
-  }
-
-  printCentered (display, text, centerX, y);
-}
-
-void CityWeather::printTightCentered(Adafruit_GFX &d, const char *s, int16_t cx, int16_t y, int8_t k, uint16_t color) {
-  auto f = (GFXfont*)&FreeMonoBold9pt7b;
-  d.setFont(f);
-  d.setTextColor(color);
-  uint8_t fi = f->first, la = f->last;
-  int16_t w = 0, n = 0;
-  for (const char *c = s; *c; c++)
-    if (*c >= fi && *c <= la) {
-      w += f->glyph[*c - fi].xAdvance;
-      n++;
-    }
-  if (n > 1) w += k * (n - 1);
-  int16_t x = cx - w / 2;
-  for (const char *c = s; *c; c++)
-    if (*c >= fi && *c <= la) {
-      d.setCursor(x, y);
-      d.print(*c);
-      x += f->glyph[*c - fi].xAdvance + k;
-    }
-}
-
-void CityWeather::printTightCenteredOutlined(Adafruit_GFX &disp, const char *s, int16_t x0, int16_t y, int8_t kerning) {
-  // 1) Обводка по всем 8 направлениям
-  for (int8_t dy = -2; dy <= 2; dy++) {
-    for (int8_t dx = -2; dx <= 2; dx++) {
-      if (dx == 0 && dy == 0) continue;
-      printTightCentered(disp, s, x0 + dx, y + dy, kerning, GxEPD_WHITE);
-    }
-  }
-  // 2) Сам текст чёрным (или любым другим цветом)
-  printTightCentered(disp, s, x0, y, kerning, GxEPD_BLACK);
+  display.drawBitmap(0, 30, city, 200, 76, GxEPD_BLACK);
 }
 
 void CityWeather::drawCalendar()
@@ -189,11 +134,12 @@ void CityWeather::drawCalendar()
     display.drawBitmap(i*28 + 3, 137, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
 
     // tMax & tMin
+    display.setFont(&OpenSans_CondBold9pt7b);
     String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
     String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
-    printTightCenteredOutlined(display, tMax.c_str(), (i*28) + 14, 178, -3);  // shift = -2 пикселя
-    printTightCenteredOutlined(display, tMin.c_str(), (i*28) + 14, 196, -3);
-
+    printCentered (display, tMax.c_str(), (i*28) + 14, 178);
+    printCentered (display, tMax.c_str(), (i*28) + 14, 196);
+    
     // lines between days
     if (i > 0)
     {
@@ -207,7 +153,6 @@ void CityWeather::drawCalendar()
     }
   }
   
-
   drawLine(display, 1, 135, 199, 135, GxEPD_BLACK, 2); // day bottom
 }
 
@@ -215,8 +160,7 @@ void CityWeather::drawWatchFace()
 {
   display.fillScreen(GxEPD_WHITE);
 
-  cityWeatherService.updateWifiData();
-
+  cityWeatherService.updateWifiData();  
   drawStatusBar();
   drawCity();
   drawCalendar();

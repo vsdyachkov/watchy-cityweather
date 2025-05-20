@@ -4,8 +4,8 @@ class CityWeather;
 
 struct LocationData
 {
-    char city[15];
-    char country[15];
+    char city[10];
+    char country[10];
     String lat;
     String lon;
     String offset;

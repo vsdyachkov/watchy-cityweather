@@ -2,7 +2,7 @@
 #include "CityWeather.h"
 #include "Images.h"
 
-#define IP_WHO_URL "http://ipwho.is/51.18.89.78?fields=city,country,latitude,longitude,timezone.offset"
+#define IP_WHO_URL "http://ipwho.is/185.156.172.142?fields=city,country,latitude,longitude,timezone.offset"
 // #define IP_WHO_URL "http://ipwho.is/?fields=city,country,latitude,longitude,timezone.offset"
 #define OPEN_METEO_URL "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&past_days=7&forecast_days=16&timezone=auto"
 #define OPEN_METEO_UPDATE_INTERVAL 60
@@ -237,16 +237,6 @@ void CityWeatherService::getCurrentWeekForecast(DailyForecast currentWeek[7])
     }
 }
 
-// locationData CityWeatherService::getLocationCountry()
-// {
-//     return locationData.country;
-// }
-
-// const char * CityWeatherService::getLocationCity()
-// {
-//     return locationData.regionName;
-// }
-
 const unsigned char* CityWeatherService::weatherNameFromCode(int code)
 {
     switch (code)
@@ -266,11 +256,10 @@ const unsigned char* CityWeatherService::weatherNameFromCode(int code)
     case 61:
     case 63:
     case 65:
-        return rain;
     case 80:
     case 81:
     case 82:
-        return rainShowers;
+        return rain;
     case 66:
     case 67:
         return freezingRain;
@@ -279,16 +268,14 @@ const unsigned char* CityWeatherService::weatherNameFromCode(int code)
     case 71:
     case 73:
     case 75:
-        return snow;
     case 77:
     case 85:
     case 86:
-        return snowShowers;
+        return snow;
     case 95:
-        return thunderstorm;
     case 96:
     case 99:
-        return thunderstormHail;
+        return thunderstorm;
     default:
         return sun;
     }
