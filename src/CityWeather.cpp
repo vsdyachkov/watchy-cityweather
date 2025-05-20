@@ -3,59 +3,14 @@
 #include "Images.h"
 #include "FreeMonoBold7pt7b.h"
 #include "OpenSans_CondBold9pt7b.h"
-#include <Fonts/FreeSans9pt7b.h>
 #include <Fonts/FreeSansBold12pt7b.h>
-#include <Fonts/FreeSansBold9pt7b.h>
 #include "CityWeather.h"
 #include "CityWeatherService.h"
 
 CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), cityWeatherService(*this) {}
 
-RTC_DATA_ATTR float ditheringValue = 0.3f;
 const uint8_t WEATHER_ICON_WIDTH = 25;
 const uint8_t WEATHER_ICON_HEIGHT = 25;
-
-/*
-#define STEPSGOAL 5000
-
-const uint8_t WEATHER_ICON_WIDTH = 48;
-const uint8_t WEATHER_ICON_HEIGHT = 32;
-
-RTC_DATA_ATTR uint8_t vaultBoyNum;
-
-
-void WatchyPipBoy::drawSteps(){
-    // reset step counter at midnight
-    if (currentTime.Hour == 0 && currentTime.Minute == 0){
-      sensor.resetStepCounter();
-    }
-
-    //draw progress bar
-    uint32_t stepCount = sensor.getCounter();
-    uint8_t progress = (uint8_t)(stepCount * 100.0 / STEPSGOAL);
-    progress = progress > 100 ? 100 : progress;
-    display.drawBitmap(60, 155, gauge, 73, 10, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    display.fillRect(60+13, 155+5, (progress/2)+5, 4, DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-
-    //show step count
-    display.setFont(&monofonto8pt7b);
-    display.setTextColor(DARKMODE ? GxEPD_WHITE : GxEPD_BLACK);
-    display.setCursor(150, 160);
-    display.print("STEPS");
-    display.setCursor(150, 175);
-    display.print(stepCount);
-}
-
-*/
-
-void CityWeather::changeSkyDithering(float d)
-{
-  ditheringValue += d;
-  ditheringValue = constrain (ditheringValue, -1.0, 1.0);
-  Serial.println(ditheringValue);
-  RTC.read(currentTime);
-  showWatchFace(true);
-}
 
 void CityWeather::drawStatusBar()
 {
@@ -82,15 +37,17 @@ void CityWeather::drawStatusBar()
   int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
   String batteryStr = String(batteryPercent) + "%";
   drawTextRightAligned(display, 198, 14, batteryStr);
+
+  drawLine (display, 0, 22, 199, 22, GxEPD_BLACK);
 }
 
 void CityWeather::drawCity()
 {
   // city & country name
   display.setFont(&OpenSans_CondBold9pt7b);
-  printCentered(display, locationData.city, 153, 78);
+  printCentered(display, locationData.city, 153, 79);
 
-  display.drawBitmap(0, 30, city, 200, 76, GxEPD_BLACK);
+  display.drawBitmap(0, 40, city, 200, 65, GxEPD_BLACK);
 }
 
 void CityWeather::drawCalendar()
@@ -98,14 +55,10 @@ void CityWeather::drawCalendar()
   DailyForecast currentWeek[7];
   cityWeatherService.getCurrentWeekForecast(currentWeek);
 
-  // int x = 1;
-  // int y = 168;
-  // float xScale = 33;
-  // float yScale = 2.0;
-
-  // std::vector<int> valuesDay = {4, 6, 10, 5, 14, 14, 10};
-  // std::vector<int> valuesNight = {-3, -8, -3, 2, 3, 2, 2};
-  // drawTwoSplines(display, valuesDay, valuesNight, x, y, xScale, yScale);
+  if (currentWeek)
+  {
+    /* code */
+  }
 
   for (int i = 0; i < 7; i++)
   {
@@ -138,7 +91,7 @@ void CityWeather::drawCalendar()
     String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
     String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
     printCentered (display, tMax.c_str(), (i*28) + 14, 178);
-    printCentered (display, tMax.c_str(), (i*28) + 14, 196);
+    printCentered (display, tMin.c_str(), (i*28) + 14, 196);
     
     // lines between days
     if (i > 0)
@@ -158,9 +111,10 @@ void CityWeather::drawCalendar()
 
 void CityWeather::drawWatchFace()
 {
+  cityWeatherService.updateWifiData();  
+
   display.fillScreen(GxEPD_WHITE);
 
-  cityWeatherService.updateWifiData();  
   drawStatusBar();
   drawCity();
   drawCalendar();

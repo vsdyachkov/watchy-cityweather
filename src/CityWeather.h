@@ -7,10 +7,6 @@ class CityWeather : public Watchy
     public:             
         explicit CityWeather(const watchySettings &settings);
         void drawWatchFace();
-        void changeSkyDithering(float d);
-        void printTemperature(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y);
-        void printTightCentered(Adafruit_GFX &d, const char *s, int16_t cx, int16_t y, int8_t k, uint16_t color);
-        void printTightCenteredOutlined(Adafruit_GFX &disp, const char *s, int16_t x0, int16_t y, int8_t kerning);
 
         void drawStatusBar();
         void drawCity();
@@ -29,11 +25,9 @@ inline void CityWeather::handleButtonPress()
         // Up and Down switch watch faces
         uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
         if (wakeupBit & UP_BTN_MASK)  {
-            changeSkyDithering(0.1);
             return;
         }
         if (wakeupBit & DOWN_BTN_MASK)  {
-            changeSkyDithering(-0.1);
             return;
         }
         if (wakeupBit & BACK_BTN_MASK )  {
