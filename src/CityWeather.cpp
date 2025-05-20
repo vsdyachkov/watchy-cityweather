@@ -45,9 +45,9 @@ void CityWeather::drawCity()
 {
   // city & country name
   display.setFont(&OpenSans_CondBold9pt7b);
-  printCentered(display, locationData.city, 153, 79);
+  printCentered(display, locationData.city, 153, 77);
 
-  display.drawBitmap(0, 40, city, 200, 65, GxEPD_BLACK);
+  display.drawBitmap(0, 39, city, 200, 65, GxEPD_BLACK);
 }
 
 void CityWeather::drawCalendar()
