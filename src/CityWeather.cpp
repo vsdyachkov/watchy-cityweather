@@ -24,21 +24,22 @@ void CityWeather::drawStatusBar()
   display.setCursor(-1, 17);
   display.print(timeStr);
 
-  // display.drawBitmap(64, 2, wifi, 19, 16, 0);
-  // display.drawBitmap(88, 2, geolocation, 13, 16, 0);
-  // display.drawBitmap(105, 2, ntp, 13, 16, 0);
-  // display.drawBitmap(122, 1, weather, 15, 16, 0);
+  display.drawBitmap(136, 3, wifi, 19, 16, 0);
+  if (!WIFI_CONFIGURED) {
+    display.drawLine (139, 3, 139+12, 3+14, GxEPD_BLACK);
+    display.drawLine (140, 3, 140+12, 3+14, GxEPD_BLACK);
+  }
 
   // battery
-  display.drawBitmap(143, 1, battery, 9, 15, GxEPD_BLACK);
+  // display.drawBitmap(143, 1, battery, 9, 15, GxEPD_BLACK);
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeMonoBold9pt7b);
   float voltage = getBatteryVoltage();
   int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
   String batteryStr = String(batteryPercent) + "%";
-  drawTextRightAligned(display, 198, 14, batteryStr);
+  drawTextRightAligned(display, 196, 16, batteryStr);
 
-  drawLine (display, 0, 22, 199, 22, GxEPD_BLACK);
+  drawLine (display, 0, 22, 199, 22, GxEPD_BLACK, 3);
 }
 
 void CityWeather::drawCity()
@@ -46,7 +47,7 @@ void CityWeather::drawCity()
   // city & country name
   display.setFont(&OpenSans_CondBold9pt7b);
   String clippedCityName = clipStringToWidth (display, &OpenSans_CondBold9pt7b, locationData.city, 82);
-  printCentered(display, clippedCityName, 153, 74);
+  printCentered(display, clippedCityName, 153, 73);
 
   display.drawBitmap(0, 25, city, 200, 80, GxEPD_BLACK);
 }
