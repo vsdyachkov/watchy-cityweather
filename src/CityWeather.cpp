@@ -46,7 +46,7 @@ void CityWeather::drawCity()
   // city & country name
   display.setFont(&OpenSans_CondBold9pt7b);
   String clippedCityName = clipStringToWidth (display, &OpenSans_CondBold9pt7b, locationData.city, 82);
-  printCentered(display, clippedCityName, 153, 77);
+  printCentered(display, clippedCityName, 153, 74);
 
   display.drawBitmap(0, 25, city, 200, 80, GxEPD_BLACK);
 }
