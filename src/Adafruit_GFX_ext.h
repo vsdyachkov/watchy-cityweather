@@ -49,6 +49,27 @@ void drawTextRightAligned(Adafruit_GFX &d, int xRight, int y, const String &text
   d.print(text);
 }
 
+String clipStringToWidth(Adafruit_GFX &display, const GFXfont *f, const char *input, int16_t maxWidth) {
+  if (!f) return String();
+
+  uint8_t first = f->first;
+  uint8_t last = f->last;
+  int16_t w = 0;
+  String result = "";
+
+  for (const char *p = input; *p; p++) {
+    char c = *p;
+    if (c < first || c > last) continue;
+
+    int16_t adv = f->glyph[c - first].xAdvance;
+    if (w + adv > maxWidth) break;
+
+    w += adv;
+    result += c;
+  }
+
+  return result;
+}
 void drawLine(Adafruit_GFX &d, int x0, int y0, int x1, int y1, uint16_t c = GxEPD_BLACK, int dithering = 2) {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
