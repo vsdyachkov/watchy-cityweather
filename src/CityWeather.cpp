@@ -57,11 +57,6 @@ void CityWeather::drawCalendar()
   DailyForecast currentWeek[7];
   cityWeatherService.getCurrentWeekForecast(currentWeek);
 
-  if (currentWeek)
-  {
-    /* code */
-  }
-
   for (int i = 0; i < 7; i++)
   {
     // fill current day
