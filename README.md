@@ -2,6 +2,7 @@
 CityWeather - SQFMI Watchy SDK based watchface for Watchy displays schematic image and weather for the current week
 
 ![screenshot](./screenshot.png)
+
 ![screenshot2](./screenshot2.png)
 
 Features:
