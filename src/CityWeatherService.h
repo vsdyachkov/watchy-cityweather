@@ -29,7 +29,6 @@ public:
 
     bool updateWifiData();
     void getCurrentWeekForecast(DailyForecast weekDay[7]);
-    // const char * getCurrentLocationName();
     const unsigned char* weatherNameFromCode(int code);
 
 private:

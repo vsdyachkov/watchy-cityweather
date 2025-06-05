@@ -2,7 +2,6 @@
 #include "CityWeather.h"
 #include "Images.h"
 
-// #define IP_WHO_URL "http://ipwho.is/63.116.61.253?fields=city,latitude,longitude,timezone.offset"
 #define IP_WHO_URL "http://ipwho.is/?fields=city,country,latitude,longitude,timezone.offset"
 #define OPEN_METEO_URL "https://api.open-meteo.com/v1/forecast?latitude={lat}&longitude={lon}&daily=temperature_2m_max,temperature_2m_min,weather_code&past_days=7&forecast_days=16&timezone=auto"
 #define OPEN_METEO_UPDATE_INTERVAL 60
@@ -14,7 +13,7 @@ RTC_DATA_ATTR const char *wdayNames[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "S
 
 RTC_DATA_ATTR DailyForecast forecast[NUM_DAYS];
 
-RTC_DATA_ATTR int updateMinutes = OPEN_METEO_UPDATE_INTERVAL;
+RTC_DATA_ATTR time_t savedTime = 0;
 
 CityWeatherService::CityWeatherService(CityWeather &cw) : cityWeather(cw) {}
 
@@ -130,54 +129,55 @@ bool CityWeatherService::getWeatherData()
 
 bool CityWeatherService::updateWifiData()
 {
+    tmElements_t tm;
+    Watchy::RTC.read(tm);
+    time_t now = makeTime(tm);
+    long diff = now - savedTime;
 
-    updateMinutes++;
+    if (savedTime == 0 || diff > 3600) {
+        
+        Serial.println("Update data...");
 
-    Serial.print("#0. updateMinutes: " + String(updateMinutes) + "/" + OPEN_METEO_UPDATE_INTERVAL + " ");
-
-    if (updateMinutes < OPEN_METEO_UPDATE_INTERVAL)
-    {
-        Serial.println("Don't need update");
-        return false;
-    }
-
-    updateMinutes = 0;
-    Serial.println("Update data...");
-
-    if (cityWeather.connectWiFi())
-    {
-        Serial.println("#1. Wifi connected");
-
-        Serial.print("#2. getLocationData... ");
-        if (retry([&]() { return getLocationData(); }, 3))
+        if (cityWeather.connectWiFi())
         {
-            Serial.print("#3. syncNTP GMT: " + locationData.offset + "... ");
-            if (retry([&]() { return cityWeather.syncNTP(locationData.offset.toInt()); }, 3))
+            Serial.println("#1. Wifi connected");
+
+            Serial.print("#2. getLocationData... ");
+            if (retry([&]() { return getLocationData(); }, 3))
             {
-                Serial.println("OK");
-                Serial.print("#4. getWeatherData...");
-                if (retry([&]() { return getWeatherData(); }, 3)){
-                    // good
-                } else {
+                Serial.print("#3. syncNTP GMT: " + locationData.offset + "... ");
+                if (retry([&]() { return cityWeather.syncNTP(locationData.offset.toInt()); }, 3))
+                {
+                    Serial.println("OK");
+                    Serial.print("#4. getWeatherData...");
+                    if (retry([&]() { return getWeatherData(); }, 3)){
+                        savedTime = now;
+                        return true;
+                    } else {
+                        return false;
+                    }
+                }
+                else
+                {
+                    Serial.println("failed");
                     return false;
                 }
             }
             else
             {
-                Serial.println("failed");
                 return false;
             }
-        }
-        else
-        {
-            return false;
-        }
 
-        WiFi.mode(WIFI_OFF);
-        btStop();
-        return true;
+            WiFi.mode(WIFI_OFF);
+            btStop();
+            return true;
+        }
+        Serial.println("#1. Wifi not connected");
+
+    } else {
+        Serial.println("Don't need update");
+        return false;
     }
-    Serial.println("#1. Wifi not connected");
 
     return false;
 }

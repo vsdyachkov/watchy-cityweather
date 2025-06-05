@@ -32,11 +32,11 @@ void drawOutlinedText(Adafruit_GFX &d, int16_t x, int16_t y, const String &text,
   d.print(text);
 }
 
-void printCentered(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y) {
+void printCentered(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y) { 
   int16_t x1, y1;
   uint16_t w, h;
   d.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
-  int16_t x = centerX - w/2;
+  int16_t x = centerX - w / 2 - x1;
   drawOutlinedText(d, x, y, text, GxEPD_BLACK);
 }
 
