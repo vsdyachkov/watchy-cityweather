@@ -11,6 +11,7 @@ CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), c
 
 const uint8_t WEATHER_ICON_WIDTH = 25;
 const uint8_t WEATHER_ICON_HEIGHT = 25;
+extern time_t savedTime;
 
 void CityWeather::drawStatusBar()
 {
@@ -39,7 +40,7 @@ void CityWeather::drawStatusBar()
   String batteryStr = String(batteryPercent) + "%";
   drawTextRightAligned(display, 196, 16, batteryStr);
 
-  drawLine (display, 0, 22, 199, 22, GxEPD_BLACK, 3);
+  drawLine (display, 0, 21, 199, 21, GxEPD_BLACK, 3);
 }
 
 void CityWeather::drawCity()
@@ -47,9 +48,20 @@ void CityWeather::drawCity()
   // city & country name
   display.setFont(&OpenSans_CondBold9pt7b);
   String clippedCityName = clipStringToWidth (display, &OpenSans_CondBold9pt7b, locationData.city, 82);
-  printCentered(display, clippedCityName, 153, 73);
+  if (clippedCityName == "") {clippedCityName = "City name";};
+  printCentered(display, clippedCityName, 153, 72);
 
-  display.drawBitmap(0, 25, city, 200, 80, GxEPD_BLACK);
+  display.drawBitmap(0, 24, city, 200, 80, GxEPD_BLACK);
+}
+
+void CityWeather::drawTip()
+{
+    display.setFont(&OpenSans_CondBold9pt7b);
+    printCentered(display, "To display the calendar", 100, 120);
+    printCentered(display, "and weather forecast", 100, 140);
+    printCentered(display, "you need to set up Wifi", 100, 160);
+    printCentered(display, "using the Watchy menu", 100, 180);
+    printCentered(display, "<---", 100, 200);   
 }
 
 void CityWeather::drawCalendar()
@@ -77,7 +89,7 @@ void CityWeather::drawCalendar()
     // day
     display.setFont(&FreeMonoBold9pt7b);
     int day = currentWeek[i].date % 100;
-    printCentered(display, (String)day, (i*28) + 13, 132);
+    printCentered(display, (String)day, (i*28) + 14, 132);
     
     // weather
     const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
@@ -114,5 +126,11 @@ void CityWeather::drawWatchFace()
 
   drawStatusBar();
   drawCity();
-  drawCalendar();
+
+  if (savedTime == 0 && !WIFI_CONFIGURED) {
+    drawTip();
+  } else {
+    drawCalendar();
+  }
+
 };
