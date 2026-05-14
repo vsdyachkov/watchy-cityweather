@@ -11,11 +11,9 @@ CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), c
 
 const uint8_t WEATHER_ICON_WIDTH = 25;
 const uint8_t WEATHER_ICON_HEIGHT = 25;
-extern time_t savedTime;
 
-void CityWeather::drawStatusBar()
+void CityWeather::drawTime()
 {
-  // time
   String timeStr =
       (currentTime.Hour < 10 ? "0" : "") + String(currentTime.Hour) + ":" +
       (currentTime.Minute < 10 ? "0" : "") + String(currentTime.Minute);
@@ -24,6 +22,11 @@ void CityWeather::drawStatusBar()
   display.setFont(&FreeSansBold12pt7b);
   display.setCursor(-1, 17);
   display.print(timeStr);
+}
+
+void CityWeather::drawStatusBar()
+{
+  drawTime();
 
   display.drawBitmap(136, 3, wifi, 19, 16, 0);
   if (!WIFI_CONFIGURED) {
@@ -62,6 +65,13 @@ void CityWeather::drawTip()
     printCentered(display, "you need to set up Wifi", 100, 160);
     printCentered(display, "using the Watchy menu", 100, 180);
     printCentered(display, "<---", 100, 200);   
+}
+
+void CityWeather::drawWeatherUnavailable()
+{
+    display.setFont(&OpenSans_CondBold9pt7b);
+    printCentered(display, "Weather data unavailable", 100, 130);
+    printCentered(display, "Will retry later", 100, 150);
 }
 
 void CityWeather::drawCalendar()
@@ -120,17 +130,57 @@ void CityWeather::drawCalendar()
 
 void CityWeather::drawWatchFace()
 {
-  cityWeatherService.updateWifiData();  
+  Watchy::RTC.read(currentTime);
+  if (cityWeatherService.updateWifiData())
+  {
+    Watchy::RTC.read(currentTime);
+  }
+  drawWatchFaceContent();
+};
 
+void CityWeather::drawWatchFaceContent()
+{
   display.fillScreen(GxEPD_WHITE);
 
   drawStatusBar();
   drawCity();
 
-  if (savedTime == 0 && !WIFI_CONFIGURED) {
+  if (!cityWeatherService.hasForecastData() && !WIFI_CONFIGURED) {
     drawTip();
+  } else if (!cityWeatherService.hasForecastData()) {
+    drawWeatherUnavailable();
   } else {
     drawCalendar();
   }
-
 };
+
+void CityWeather::showMinuteTick()
+{
+  if (cityWeatherService.updateWifiData())
+  {
+    Watchy::RTC.read(currentTime);
+    display.setFullWindow();
+    display.epd2.asyncPowerOn();
+    drawWatchFaceContent();
+    display.display(true);
+    guiState = WATCHFACE_STATE;
+    return;
+  }
+
+  display.setFullWindow();
+  display.epd2.asyncPowerOn();
+  display.fillScreen(GxEPD_WHITE);
+  drawTime();
+  display.displayWindow(0, 0, 80, 21);
+  guiState = WATCHFACE_STATE;
+}
+
+void watchyMinuteTick(Watchy *watchy)
+{
+  static_cast<CityWeather *>(watchy)->showMinuteTick();
+}
+
+void watchyWifiConfigured(Watchy *)
+{
+  resetCityWeatherNetworkCache();
+}
