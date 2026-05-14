@@ -7,11 +7,15 @@ class CityWeather : public Watchy
     public:             
         explicit CityWeather(const watchySettings &settings);
         void drawWatchFace();
+        void showMinuteTick();
 
+        void drawTime();
         void drawStatusBar();
         void drawCity();
         void drawCalendar();
         void drawTip();
+        void drawWeatherUnavailable();
+        void drawWatchFaceContent();
 
     private:
         CityWeatherService cityWeatherService;

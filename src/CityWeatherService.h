@@ -5,9 +5,9 @@ class CityWeather;
 struct LocationData
 {
     char city[20];
-    String lat;
-    String lon;
-    String offset;
+    char lat[16];
+    char lon[16];
+    char offset[12];
 };
 
 struct DailyForecast
@@ -21,6 +21,8 @@ struct DailyForecast
 
 extern RTC_DATA_ATTR LocationData locationData;
 
+void resetCityWeatherNetworkCache();
+
 class CityWeatherService
 {
 
@@ -28,6 +30,7 @@ public:
     explicit CityWeatherService(CityWeather &cw);
 
     bool updateWifiData();
+    bool hasForecastData() const;
     void getCurrentWeekForecast(DailyForecast weekDay[7]);
     const unsigned char* weatherNameFromCode(int code);
 
@@ -38,4 +41,3 @@ private:
     bool getWeatherData();
     void sortForecasts(DailyForecast *forecastArray, size_t size);
 };
-
