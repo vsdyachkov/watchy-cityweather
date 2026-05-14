@@ -59,6 +59,7 @@ def patch_watchy_cpp(watchy_cpp):
     text = patch_quiet_hours_vibration(text)
     text = patch_wifi_configured_hook(text)
     text = patch_menu_partial_refresh(text)
+    text = patch_white_menu_theme(text)
     text = patch_reset_vibration(text)
     text = patch_reset_watchface_refresh(text)
 
@@ -221,6 +222,35 @@ def patch_menu_partial_refresh(text):
         text = text.replace(original, patched, 1)
 
     print("Watchy menu watchface partial refresh patch: applied")
+    return text
+
+
+def patch_white_menu_theme(text):
+    original_text = text
+
+    replacements = (
+        ("display.fillScreen(GxEPD_BLACK);", "display.fillScreen(GxEPD_WHITE);"),
+        ("display.setTextColor(GxEPD_WHITE);", "display.setTextColor(GxEPD_BLACK);"),
+        (
+            "display.setTextColor(blink ? GxEPD_WHITE : GxEPD_BLACK);",
+            "display.setTextColor(blink ? GxEPD_BLACK : GxEPD_WHITE);",
+        ),
+    )
+    for original, patched in replacements:
+        text = text.replace(original, patched)
+
+    for fill_color in ("GxEPD_WHITE", "GxEPD_BLACK"):
+        text = text.replace(
+            f"      display.fillRect(x1 - 1, y1 - 10, 200, h + 15, {fill_color});\n"
+            "      display.setTextColor(GxEPD_BLACK);\n",
+            "      display.fillRect(x1 - 1, y1 - 10, 200, h + 15, GxEPD_BLACK);\n"
+            "      display.setTextColor(GxEPD_WHITE);\n",
+        )
+
+    if text == original_text:
+        print("Watchy white menu theme patch: already applied")
+    else:
+        print("Watchy white menu theme patch: applied")
     return text
 
 
