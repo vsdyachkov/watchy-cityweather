@@ -2,7 +2,7 @@
 #include "Adafruit_GFX_ext.h"
 #include "Images.h"
 #include "FreeMonoBold7pt7b.h"
-#include "OpenSans_CondBold9pt7b.h"
+#include "OpenSansCondBoldCyrillic9pt.h"
 #include <Fonts/FreeSansBold12pt7b.h>
 #include "CityWeather.h"
 #include "CityWeatherService.h"
@@ -49,29 +49,35 @@ void CityWeather::drawStatusBar()
 void CityWeather::drawCity()
 {
   // city & country name
-  display.setFont(&OpenSans_CondBold9pt7b);
-  String clippedCityName = clipStringToWidth (display, &OpenSans_CondBold9pt7b, locationData.city, 82);
-  if (clippedCityName == "") {clippedCityName = "City name";};
-  printCentered(display, clippedCityName, 153, 72);
+  String cityName = locationData.city;
+  cityName.trim();
+  if (cityName == "") {cityName = "City name";};
+  OpenSansCondensed::printCentered(
+      display,
+      OpenSansCondBoldCyrillic9pt,
+      cityName,
+      153,
+      72,
+      82,
+      GxEPD_BLACK
+  );
 
   display.drawBitmap(0, 24, city, 200, 80, GxEPD_BLACK);
 }
 
 void CityWeather::drawTip()
 {
-    display.setFont(&OpenSans_CondBold9pt7b);
-    printCentered(display, "To display the calendar", 100, 120);
-    printCentered(display, "and weather forecast", 100, 140);
-    printCentered(display, "you need to set up Wifi", 100, 160);
-    printCentered(display, "using the Watchy menu", 100, 180);
-    printCentered(display, "<---", 100, 200);   
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "To display the calendar", 100, 120, 192, GxEPD_BLACK);
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "and weather forecast", 100, 140, 192, GxEPD_BLACK);
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "you need to set up Wifi", 100, 160, 192, GxEPD_BLACK);
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "using the Watchy menu", 100, 180, 192, GxEPD_BLACK);
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "<---", 100, 200, 192, GxEPD_BLACK);   
 }
 
 void CityWeather::drawWeatherUnavailable()
 {
-    display.setFont(&OpenSans_CondBold9pt7b);
-    printCentered(display, "Weather data unavailable", 100, 130);
-    printCentered(display, "Will retry later", 100, 150);
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "Weather data unavailable", 100, 130, 192, GxEPD_BLACK);
+    OpenSansCondensed::printCentered(display, OpenSansCondBoldCyrillic9pt, "Will retry later", 100, 150, 192, GxEPD_BLACK);
 }
 
 void CityWeather::drawCalendar()
@@ -106,11 +112,10 @@ void CityWeather::drawCalendar()
     display.drawBitmap(i*28 + 3, 137, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
 
     // tMax & tMin
-    display.setFont(&OpenSans_CondBold9pt7b);
     String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
     String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
-    printCentered (display, tMax.c_str(), (i*28) + 14, 178);
-    printCentered (display, tMin.c_str(), (i*28) + 14, 196);
+    OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMax, (i*28) + 14, 178, 28, GxEPD_BLACK, GxEPD_WHITE);
+    OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMin, (i*28) + 14, 196, 28, GxEPD_BLACK, GxEPD_WHITE);
     
     // lines between days
     if (i > 0)
@@ -131,7 +136,7 @@ void CityWeather::drawCalendar()
 void CityWeather::drawWatchFace()
 {
   Watchy::RTC.read(currentTime);
-  if (cityWeatherService.updateWifiData())
+  if (!isNotificationsActive() && cityWeatherService.updateWifiData())
   {
     Watchy::RTC.read(currentTime);
   }
@@ -145,9 +150,14 @@ void CityWeather::drawWatchFaceContent()
   drawStatusBar();
   drawCity();
 
-  if (!cityWeatherService.hasForecastData() && !WIFI_CONFIGURED) {
+  const bool hasForecastData = cityWeatherService.hasForecastData();
+  if (isNotificationsActive() && !hasForecastData) {
+    return;
+  }
+
+  if (!hasForecastData && !WIFI_CONFIGURED) {
     drawTip();
-  } else if (!cityWeatherService.hasForecastData()) {
+  } else if (!hasForecastData) {
     drawWeatherUnavailable();
   } else {
     drawCalendar();
@@ -156,6 +166,11 @@ void CityWeather::drawWatchFaceContent()
 
 void CityWeather::showMinuteTick()
 {
+  if (isNotificationsActive())
+  {
+    return;
+  }
+
   if (cityWeatherService.updateWifiData())
   {
     Watchy::RTC.read(currentTime);
@@ -175,9 +190,42 @@ void CityWeather::showMinuteTick()
   guiState = WATCHFACE_STATE;
 }
 
+void CityWeather::showNotifications()
+{
+  if (notificationService.isActive())
+  {
+    stopNotifications();
+    return;
+  }
+
+  notificationService.start(*this);
+  Watchy::showMenu(menuIndex, true);
+}
+
+void CityWeather::stopNotifications()
+{
+  notificationService.stop();
+  Watchy::showMenu(menuIndex, true);
+}
+
 void watchyMinuteTick(Watchy *watchy)
 {
   static_cast<CityWeather *>(watchy)->showMinuteTick();
+}
+
+void watchyNotificationsSelected(Watchy *watchy)
+{
+  static_cast<CityWeather *>(watchy)->showNotifications();
+}
+
+bool watchyShouldDeepSleep(Watchy *watchy)
+{
+  return !static_cast<CityWeather *>(watchy)->isNotificationsActive();
+}
+
+bool watchyNotificationsEnabled(Watchy *watchy)
+{
+  return static_cast<CityWeather *>(watchy)->isNotificationsActive();
 }
 
 void watchyWifiConfigured(Watchy *)

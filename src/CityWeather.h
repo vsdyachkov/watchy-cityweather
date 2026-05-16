@@ -1,6 +1,7 @@
 #pragma once
 #include <Watchy.h>
 #include "CityWeatherService.h"
+#include "NotificationService.h"
 
 class CityWeather : public Watchy
 {
@@ -8,6 +9,10 @@ class CityWeather : public Watchy
         explicit CityWeather(const watchySettings &settings);
         void drawWatchFace();
         void showMinuteTick();
+        void showNotifications();
+        void stopNotifications();
+        void loop();
+        bool isNotificationsActive() const;
 
         void drawTime();
         void drawStatusBar();
@@ -19,6 +24,7 @@ class CityWeather : public Watchy
 
     private:
         CityWeatherService cityWeatherService;
+        NotificationService notificationService;
         
         virtual void handleButtonPress();
 };
@@ -49,4 +55,15 @@ inline void CityWeather::handleButtonPress()
         Watchy::handleButtonPress();
     }
     return;
+}
+
+inline void CityWeather::loop()
+{
+    notificationService.tick(*this);
+    delay(20);
+}
+
+inline bool CityWeather::isNotificationsActive() const
+{
+    return notificationService.isActive();
 }

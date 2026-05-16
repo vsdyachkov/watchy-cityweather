@@ -8,7 +8,8 @@ void setup(){
   // while (!Serial);
 
   watchy.init();
-  watchy.showWatchFace(false);
 }
 
-void loop(){}
+void loop(){
+  watchy.loop();
+}
