@@ -250,7 +250,6 @@ bool CityWeatherService::updateWifiData()
     }
 
     WiFi.mode(WIFI_OFF);
-    btStop();
 
     if (!success)
     {
