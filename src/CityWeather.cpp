@@ -471,6 +471,19 @@ bool versionParts(const String &version, int parts[4])
   return hasPart;
 }
 
+String shortVersionLabel(const String &version)
+{
+  int parts[4];
+  if (!versionParts(version, parts))
+  {
+    String fallback = version;
+    fallback.trim();
+    return fallback;
+  }
+
+  return String(parts[0]) + "." + String(parts[1]);
+}
+
 int compareVersionStrings(const String &currentVersion, const String &latestVersion, bool *comparable)
 {
   int currentParts[4];
@@ -741,11 +754,11 @@ String CityWeather::checkLatestReleaseStatus()
       compareVersionStrings(String(CITYWEATHER_CLEAN_VERSION), latestTag, &comparable);
   if (!comparable)
   {
-    return "Latest: " + latestTag;
+    return "Latest: " + shortVersionLabel(latestTag);
   }
   if (comparison < 0)
   {
-    return "New version: " + latestTag;
+    return "New version: " + shortVersionLabel(latestTag);
   }
   return "Up to date";
 }
@@ -873,7 +886,13 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
   constexpr int16_t graphTitleY = uptimeLineY + lineStep;
   constexpr int16_t graphTitleGap = 8;
 
-  printFitLine(display, "CityWeather: " + String(CITYWEATHER_CLEAN_VERSION), 0, appLineY, 200);
+  printFitLine(
+      display,
+      "CityWeather: " + shortVersionLabel(String(CITYWEATHER_CLEAN_VERSION)),
+      0,
+      appLineY,
+      200
+  );
   printFitLine(display, updateStatus, 0, updateLineY, 200);
 
   uint32_t totalSeconds = aboutUptimeSeconds(currentTime, bootTime);
