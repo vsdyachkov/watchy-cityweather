@@ -31,6 +31,7 @@ public:
 
     bool updateWifiData();
     bool hasForecastData() const;
+    bool hasCurrentWeekForecastData() const;
     void getCurrentWeekForecast(DailyForecast weekDay[7]);
     const unsigned char* weatherNameFromCode(int code);
 

@@ -1,24 +1,25 @@
 #include "NotificationService.h"
 
-#include <Fonts/FreeSansBold12pt7b.h>
 #include <cstring>
 
-#include "Images.h"
+#include "StatusBar.h"
 
 NotificationService *NotificationService::activeInstance = nullptr;
 constexpr char NotificationService::DEVICE_NAME[];
 
+void watchyAppTick(Watchy *watchy);
+
 namespace
 {
-void printRightAligned(Adafruit_GFX &display, int16_t xRight, int16_t y, const String &text)
+uint8_t maxLinesThatFit(int16_t baselineY, int16_t lineHeight, int16_t bottomY)
 {
-    int16_t x1;
-    int16_t y1;
-    uint16_t width;
-    uint16_t height;
-    display.getTextBounds(text, 0, 0, &x1, &y1, &width, &height);
-    display.setCursor(xRight - width, y);
-    display.print(text);
+    if (lineHeight <= 0 || baselineY > bottomY)
+    {
+        return 0;
+    }
+
+    int16_t lines = 1 + (bottomY - baselineY) / lineHeight;
+    return static_cast<uint8_t>(constrain(lines, 0, 12));
 }
 }
 
@@ -28,6 +29,7 @@ bool NotificationService::start(Watchy &watchy)
 {
     (void)watchy;
     activeInstance = this;
+    setBluetoothDisplayMode(true);
     setupButtons();
     setupVibration();
 
@@ -53,11 +55,15 @@ void NotificationService::stop()
     active = false;
     startupPending = false;
     menuVisible = false;
+    aboutVisible = false;
     digitalWrite(VIB_MOTOR_PIN, LOW);
     vibrationActive = false;
     vibrationRequested = false;
+    notificationBatchPending = false;
+    notificationStatusBarRefreshRequested = false;
     restartAdvertisingRequested = false;
     prepareBluetoothForSleep();
+    setBluetoothDisplayMode(false);
 }
 
 void NotificationService::tick(Watchy &watchy)
@@ -124,9 +130,20 @@ void NotificationService::tick(Watchy &watchy)
         }
     }
 
+    flushNotificationBatchIfReady();
+    if (!aboutVisible)
+    {
+        refreshNotificationStatusBarIfNeeded(watchy);
+    }
     handleVibration();
 
-    if (!menuVisible && redrawRequested && !vibrationActive && !vibrationRequested)
+    if (aboutVisible)
+    {
+        handleAboutScreen(watchy);
+        return;
+    }
+
+    if (!menuVisible && redrawRequested)
     {
         drawScreen(watchy);
     }
@@ -137,6 +154,11 @@ void NotificationService::tick(Watchy &watchy)
 bool NotificationService::isActive() const
 {
     return active;
+}
+
+bool NotificationService::isMenuVisible() const
+{
+    return menuVisible;
 }
 
 void NotificationService::ensureStarted()
@@ -175,6 +197,11 @@ void NotificationService::prepareBluetoothForSleep()
     // Deep sleep/reset will tear the radio down reliably after we leave this mode.
 }
 
+void NotificationService::setBluetoothDisplayMode(bool enabled)
+{
+    Watchy::display.epd2.setBusyCallback(enabled ? nullptr : WatchyDisplay::busyCallback);
+}
+
 void NotificationService::setupButtons()
 {
 #ifdef ARDUINO_ESP32S3_DEV
@@ -209,13 +236,26 @@ void NotificationService::onNotificationArrived(
     const Notification *rawNotificationData
 )
 {
-    (void)rawNotificationData;
     if (activeInstance != nullptr)
     {
         if (notification == nullptr)
         {
             return;
         }
+
+#if CITYWEATHER_ANCS_DEBUG
+        Serial.printf(
+            "[ANCS] uuid=%lu app='%s' title='%s' subtitle='%s' message='%s' rawTitle=%d rawMessage=%d complete=%d\n",
+            static_cast<unsigned long>(notification->uuid),
+            notification->type.c_str(),
+            notification->title.c_str(),
+            notification->subtitle.c_str(),
+            notification->message.c_str(),
+            rawNotificationData != nullptr ? rawNotificationData->titleReceived : 0,
+            rawNotificationData != nullptr ? rawNotificationData->messageReceived : 0,
+            rawNotificationData != nullptr ? rawNotificationData->isComplete : 0
+        );
+#endif
 
         TrackedNotification trackedNotification;
         trackedNotification.uuid = notification->uuid;
@@ -225,6 +265,11 @@ void NotificationService::onNotificationArrived(
             trackedNotification.title,
             sizeof(trackedNotification.title),
             notification->title
+        );
+        activeInstance->copyString(
+            trackedNotification.subtitle,
+            sizeof(trackedNotification.subtitle),
+            notification->subtitle
         );
         activeInstance->copyString(
             trackedNotification.message,
@@ -280,6 +325,25 @@ void NotificationService::runActionTask(void *parameter)
     vTaskDelete(nullptr);
 }
 
+void NotificationService::runClearActionsTask(void *parameter)
+{
+    PendingClearActions *actions = static_cast<PendingClearActions *>(parameter);
+    if (actions != nullptr && actions->notifications != nullptr)
+    {
+        for (uint8_t index = 0; index < actions->count; index++)
+        {
+            if (actions->uuids[index] != 0)
+            {
+                actions->notifications->actionNegative(actions->uuids[index]);
+                vTaskDelay(pdMS_TO_TICKS(80));
+            }
+        }
+    }
+
+    delete actions;
+    vTaskDelete(nullptr);
+}
+
 void NotificationService::processStateChanged(BLENotifications::State state)
 {
     lockState();
@@ -313,23 +377,36 @@ void NotificationService::processNotificationArrived(const TrackedNotification &
 
     lockState();
     int8_t existingIndex = trackedNotificationIndex(notification.uuid);
+    uint8_t previousNotificationCount = trackedNotificationCount;
     uint8_t storedIndex = upsertTrackedNotification(notification);
     bool isNewNotification = existingIndex < 0;
 
+    idleWatchFaceDrawn = false;
     if (isNewNotification)
     {
-        idleWatchFaceDrawn = false;
-        selectTrackedNotification(storedIndex);
-        vibrationRequested = true;
+        followLatestNotification = true;
+    }
+
+    if (followLatestNotification)
+    {
+        selectTrackedNotification(0);
     }
     else if (currentNotificationUUID != 0)
     {
         int8_t currentIndex = trackedNotificationIndex(currentNotificationUUID);
-        currentNotificationIndex = currentIndex >= 0 ? static_cast<uint8_t>(currentIndex + 1) : 0;
+        selectTrackedNotification(
+            currentIndex >= 0 ? static_cast<uint8_t>(currentIndex) : storedIndex
+        );
     }
 
     copyCString(statusText, sizeof(statusText), "iOS");
-    redrawRequested = true;
+    notificationBatchPending = true;
+    notificationBatchDeadlineAtMs = millis() + NOTIFICATION_BATCH_WINDOW_MS;
+    if (isNewNotification || trackedNotificationCount != previousNotificationCount)
+    {
+        notificationStatusBarRefreshRequested = true;
+    }
+    redrawRequested = false;
     unlockState();
 }
 
@@ -359,23 +436,39 @@ void NotificationService::processNotificationRemoved(uint32_t uuid)
 void NotificationService::drawScreen(Watchy &watchy)
 {
     char localTitle[sizeof(titleText)];
+    char localSubtitle[sizeof(subtitleText)];
     char localMessage[sizeof(messageText)];
     char localPositiveLabel[sizeof(trackedNotifications[0].positiveLabel)] = "";
     char localNegativeLabel[sizeof(trackedNotifications[0].negativeLabel)] = "";
     uint32_t localEventFlags = 0;
     uint8_t localNotificationCount = 0;
     uint8_t localNotificationIndex = 0;
+    uint8_t localDisplayNotificationIndex = 0;
 
     lockState();
-    copyCString(localTitle, sizeof(localTitle), titleText);
-    copyCString(localMessage, sizeof(localMessage), messageText);
     localNotificationCount = trackedNotificationCount;
-    localNotificationIndex = currentNotificationIndex;
-
-    if (localNotificationIndex > 0 && localNotificationIndex <= localNotificationCount)
+    int8_t selectedIndex = currentNotificationUUID != 0
+        ? trackedNotificationIndex(currentNotificationUUID)
+        : -1;
+    if (
+        selectedIndex < 0 &&
+        currentNotificationIndex > 0 &&
+        currentNotificationIndex <= localNotificationCount
+    )
     {
+        selectedIndex = static_cast<int8_t>(currentNotificationIndex - 1);
+    }
+
+    if (selectedIndex >= 0 && selectedIndex < static_cast<int8_t>(localNotificationCount))
+    {
+        localNotificationIndex = static_cast<uint8_t>(selectedIndex + 1);
+        localDisplayNotificationIndex =
+            localNotificationCount - static_cast<uint8_t>(selectedIndex);
         const TrackedNotification &currentNotification =
-            trackedNotifications[localNotificationIndex - 1];
+            trackedNotifications[selectedIndex];
+        copyCString(localTitle, sizeof(localTitle), currentNotification.title);
+        copyCString(localSubtitle, sizeof(localSubtitle), currentNotification.subtitle);
+        copyCString(localMessage, sizeof(localMessage), currentNotification.message);
         localEventFlags = currentNotification.eventFlags;
         copyCString(
             localPositiveLabel,
@@ -387,6 +480,12 @@ void NotificationService::drawScreen(Watchy &watchy)
             sizeof(localNegativeLabel),
             currentNotification.negativeLabel
         );
+    }
+    else
+    {
+        copyCString(localTitle, sizeof(localTitle), titleText);
+        copyCString(localSubtitle, sizeof(localSubtitle), subtitleText);
+        copyCString(localMessage, sizeof(localMessage), messageText);
     }
     redrawRequested = false;
     unlockState();
@@ -407,102 +506,153 @@ void NotificationService::drawScreen(Watchy &watchy)
     Watchy::display.epd2.asyncPowerOn();
     Watchy::display.fillScreen(GxEPD_WHITE);
     Watchy::display.setTextColor(GxEPD_BLACK);
-    drawStatusBar(watchy);
+    String counterText =
+        String(localDisplayNotificationIndex) + "/" + String(localNotificationCount);
+    drawStatusBar(watchy, counterText.c_str());
 
-    constexpr int16_t contentTop = 24;
+    constexpr int16_t contentTop = 27;
     constexpr int16_t contentLeft = 4;
     constexpr int16_t contentWidth = 192;
     constexpr int16_t footerTop = 176;
     constexpr int16_t footerBaseline = 195;
-    constexpr int16_t headerBaseline = contentTop + 14;
 
-    String counterText = String(localNotificationIndex) + "/" + String(localNotificationCount);
+    constexpr uint8_t titleScaleNumerator = 4;
+    constexpr uint8_t titleScaleDenominator = 3;
+    constexpr int16_t titleBaseline = contentTop + 18;
+    constexpr int16_t titleSubtitleGap = 6;
+    constexpr int16_t titleMessageGap = 7;
+    constexpr int16_t subtitleMessageGap = 5;
+    constexpr int16_t titleLineOverlap = 8;
+    constexpr int16_t titleLineSpacingAdjustment = -5;
+    const int16_t titleLineHeight =
+        (OpenSansCondBoldCyrillic9pt.lineHeight * titleScaleNumerator + titleScaleDenominator - 1)
+        / titleScaleDenominator + titleLineSpacingAdjustment;
+    const int16_t bodyLineHeight = OpenSansCondBoldCyrillic9pt.lineHeight;
+    const bool hasTitle = localTitle[0] != '\0';
+    const bool hasSubtitle = localSubtitle[0] != '\0';
+    const bool hasMessage = localMessage[0] != '\0';
+
+    int16_t messageY = titleBaseline;
+    if (hasTitle)
+    {
+        int16_t reservedAfterTitle = 0;
+        if (hasSubtitle)
+        {
+            reservedAfterTitle += titleSubtitleGap + bodyLineHeight;
+        }
+        if (hasMessage)
+        {
+            reservedAfterTitle += (hasSubtitle ? subtitleMessageGap : titleMessageGap) +
+                bodyLineHeight;
+        }
+
+        uint8_t maxTitleLines = maxLinesThatFit(
+            titleBaseline,
+            titleLineHeight,
+            footerTop - reservedAfterTitle
+        );
+        if (maxTitleLines == 0)
+        {
+            maxTitleLines = 1;
+        }
+
+        uint8_t titleLines = OpenSansCondensed::printBlockScaled(
+            Watchy::display,
+            OpenSansCondBoldCyrillic9pt,
+            String(localTitle),
+            contentLeft,
+            titleBaseline,
+            contentWidth,
+            maxTitleLines,
+            titleScaleNumerator,
+            titleScaleDenominator,
+            GxEPD_BLACK,
+            true,
+            titleLineSpacingAdjustment
+        );
+        if (titleLines > 0)
+        {
+            messageY += titleLines * titleLineHeight - titleLineOverlap;
+        }
+    }
+    if (hasSubtitle)
+    {
+        if (hasTitle)
+        {
+            messageY += titleSubtitleGap;
+        }
+        int16_t reservedAfterSubtitle = hasMessage ? subtitleMessageGap + bodyLineHeight : 0;
+        uint8_t maxSubtitleLines = maxLinesThatFit(
+            messageY,
+            bodyLineHeight,
+            footerTop - reservedAfterSubtitle
+        );
+        uint8_t subtitleLines = OpenSansCondensed::printBlock(
+            Watchy::display,
+            OpenSansCondBoldCyrillic9pt,
+            String(localSubtitle),
+            contentLeft,
+            messageY,
+            contentWidth,
+            maxSubtitleLines,
+            GxEPD_BLACK
+        );
+        if (subtitleLines > 0)
+        {
+            messageY += subtitleLines * bodyLineHeight;
+            if (hasMessage)
+            {
+                messageY += subtitleMessageGap;
+            }
+        }
+    }
+    else if (hasTitle && hasMessage)
+    {
+        messageY += titleMessageGap;
+    }
+    if (hasMessage)
+    {
+        uint8_t messageLines = maxLinesThatFit(messageY, bodyLineHeight, footerTop);
+        if (messageLines == 0)
+        {
+            messageLines = 1;
+        }
+        OpenSansCondensed::printBlock(
+            Watchy::display,
+            OpenSansCondBoldCyrillic9pt,
+            String(localMessage),
+            contentLeft,
+            messageY,
+            contentWidth,
+            messageLines,
+            GxEPD_BLACK
+        );
+    }
+
+    constexpr int16_t footerLeftWidth = 104;
+    constexpr int16_t footerRightX = 104;
+    constexpr int16_t footerRightWidth = 92;
+    (void)localPositiveLabel;
     OpenSansCondensed::printLine(
         Watchy::display,
         OpenSansCondBoldCyrillic9pt,
-        counterText,
-        160,
-        headerBaseline,
-        36,
-        true,
+        "Clear all",
+        4,
+        footerBaseline,
+        footerLeftWidth,
+        false,
         GxEPD_BLACK
     );
-
-    constexpr int16_t titleBaseline = headerBaseline;
-    constexpr int16_t titleMessageGap = 10;
-    uint8_t titleLines = OpenSansCondensed::printBlock(
-        Watchy::display,
-        OpenSansCondBoldCyrillic9pt,
-        String(localTitle),
-        contentLeft,
-        titleBaseline,
-        150,
-        2,
-        GxEPD_BLACK,
-        true
-    );
-
-    int16_t messageY =
-        titleBaseline + titleLines * OpenSansCondBoldCyrillic9pt.lineHeight + titleMessageGap;
-    uint8_t messageLines =
-        footerTop > messageY
-            ? static_cast<uint8_t>((footerTop - messageY) / OpenSansCondBoldCyrillic9pt.lineHeight + 1)
-            : 1;
-    if (messageLines == 0)
-    {
-        messageLines = 1;
-    }
-    OpenSansCondensed::printBlock(
-        Watchy::display,
-        OpenSansCondBoldCyrillic9pt,
-        String(localMessage),
-        contentLeft,
-        messageY,
-        contentWidth,
-        messageLines,
-        GxEPD_BLACK
-    );
-
-    constexpr int16_t footerWidth = 92;
-    bool footerHasAction = false;
-    if ((localEventFlags & ANCS::EventFlagPositiveAction) != 0)
-    {
-        OpenSansCondensed::printLine(
-            Watchy::display,
-            OpenSansCondBoldCyrillic9pt,
-            String(localPositiveLabel),
-            4,
-            footerBaseline,
-            footerWidth,
-            false,
-            GxEPD_BLACK
-        );
-        footerHasAction = true;
-    }
     if ((localEventFlags & ANCS::EventFlagNegativeAction) != 0)
     {
         OpenSansCondensed::printLine(
             Watchy::display,
             OpenSansCondBoldCyrillic9pt,
-            String(localNegativeLabel),
-            104,
+            "Read",
+            footerRightX,
             footerBaseline,
-            footerWidth,
+            footerRightWidth,
             true,
-            GxEPD_BLACK
-        );
-        footerHasAction = true;
-    }
-    if (!footerHasAction)
-    {
-        OpenSansCondensed::printLine(
-            Watchy::display,
-            OpenSansCondBoldCyrillic9pt,
-            "Hold BACK to exit",
-            4,
-            footerBaseline,
-            192,
-            false,
             GxEPD_BLACK
         );
     }
@@ -510,38 +660,68 @@ void NotificationService::drawScreen(Watchy &watchy)
     Watchy::display.display(true);
 }
 
-void NotificationService::drawStatusBar(Watchy &watchy)
+void NotificationService::drawStatusBar(Watchy &watchy, const char *notificationCounter)
 {
-    Watchy::RTC.read(watchy.currentTime);
-
-    String timeText =
-        (watchy.currentTime.Hour < 10 ? "0" : "") + String(watchy.currentTime.Hour) + ":" +
-        (watchy.currentTime.Minute < 10 ? "0" : "") + String(watchy.currentTime.Minute);
-
-    Watchy::display.setTextColor(GxEPD_BLACK);
-    Watchy::display.setFont(&FreeSansBold12pt7b);
-    Watchy::display.setCursor(-1, 17);
-    Watchy::display.print(timeText);
-
-    Watchy::display.drawBitmap(136, 3, wifi, 19, 16, GxEPD_BLACK);
-    if (!WIFI_CONFIGURED)
-    {
-        Watchy::display.drawLine(139, 3, 151, 17, GxEPD_BLACK);
-        Watchy::display.drawLine(140, 3, 152, 17, GxEPD_BLACK);
-    }
-
-    Watchy::display.setTextColor(GxEPD_BLACK);
-    Watchy::display.setFont(&FreeMonoBold9pt7b);
-    float voltage = watchy.getBatteryVoltage();
-    int batteryPercent = constrain((voltage - 3.3) * 111.11, 0, 100);
-    printRightAligned(Watchy::display, 196, 16, String(batteryPercent) + "%");
-
-    Watchy::display.drawFastHLine(0, 21, 200, GxEPD_BLACK);
+    drawCityWeatherStatusBar(watchy, active, notificationCounter);
 }
 
 void NotificationService::drawIdleWatchFace(Watchy &watchy)
 {
     watchy.showWatchFace(true);
+}
+
+void NotificationService::flushNotificationBatchIfReady()
+{
+    const uint32_t now = millis();
+    lockState();
+    if (
+        notificationBatchPending &&
+        static_cast<int32_t>(now - notificationBatchDeadlineAtMs) >= 0
+    )
+    {
+        notificationBatchPending = false;
+        notificationStatusBarRefreshRequested = false;
+        if (trackedNotificationCount > 0)
+        {
+            if (followLatestNotification)
+            {
+                selectTrackedNotification(0);
+            }
+            vibrationRequested = true;
+            redrawRequested = true;
+        }
+    }
+    unlockState();
+}
+
+void NotificationService::refreshNotificationStatusBarIfNeeded(Watchy &watchy)
+{
+    uint8_t localNotificationCount = 0;
+    bool shouldRefresh = false;
+
+    lockState();
+    if (notificationStatusBarRefreshRequested)
+    {
+        notificationStatusBarRefreshRequested = false;
+        if (notificationBatchPending && trackedNotificationCount > 0)
+        {
+            localNotificationCount = trackedNotificationCount;
+            shouldRefresh = true;
+        }
+    }
+    unlockState();
+
+    if (!shouldRefresh)
+    {
+        return;
+    }
+
+    String counterText = String(localNotificationCount);
+    Watchy::display.setFullWindow();
+    Watchy::display.epd2.asyncPowerOn();
+    Watchy::display.fillRect(0, 0, 200, 24, GxEPD_WHITE);
+    drawStatusBar(watchy, counterText.c_str());
+    Watchy::display.displayWindow(0, 0, 200, 24);
 }
 
 void NotificationService::handleVibration()
@@ -560,6 +740,37 @@ void NotificationService::handleVibration()
         vibrationStopAtMs = now + NOTIFICATION_VIBRATION_MS;
         digitalWrite(VIB_MOTOR_PIN, HIGH);
     }
+}
+
+void NotificationService::handleAboutScreen(Watchy &watchy)
+{
+    watchyAppTick(&watchy);
+
+    uint8_t currentButtonMask = readButtonMask();
+    uint8_t pressedButtons = currentButtonMask & ~previousAboutButtonMask;
+    uint32_t now = millis();
+    if (
+        (pressedButtons & BACK_BUTTON) != 0 &&
+        now - lastButtonActionAtMs >= BUTTON_DEBOUNCE_MS
+    )
+    {
+        delay(40);
+        if ((readButtonMask() & BACK_BUTTON) == 0)
+        {
+            previousAboutButtonMask = readButtonMask();
+            return;
+        }
+        aboutVisible = false;
+        menuVisible = true;
+        lastButtonActionAtMs = now;
+        waitForButtonsReleased(700);
+        watchy.showMenu(menuIndex, true);
+        previousButtonMask = readButtonMask();
+        previousAboutButtonMask = previousButtonMask;
+        return;
+    }
+
+    previousAboutButtonMask = currentButtonMask;
 }
 
 void NotificationService::handleButtons(Watchy &watchy)
@@ -587,16 +798,37 @@ void NotificationService::handleButtons(Watchy &watchy)
                     watchy.deepSleep();
                     return;
                 }
+
                 lastButtonActionAtMs = now;
+                waitForButtonsReleased(700);
+                switch (menuIndex)
+                {
+                    case 0:
+                        stop();
+                        watchy.setupWifi();
+                        break;
+                    case 2:
+                        watchy.setTime();
+                        break;
+                    case 3:
+                        watchy.showAccelerometer();
+                        break;
+                    case 4:
+                        aboutVisible = true;
+                        watchy.showAbout();
+                        previousAboutButtonMask = readButtonMask();
+                        break;
+                    default:
+                        break;
+                }
+                previousButtonMask = readButtonMask();
+                return;
             }
             else if ((pressedButtons & BACK_BUTTON) != 0)
             {
                 menuVisible = false;
                 redrawRequested = true;
-                if (!vibrationActive && !vibrationRequested)
-                {
-                    drawScreen(watchy);
-                }
+                drawScreen(watchy);
                 lastButtonActionAtMs = now;
             }
             else if ((pressedButtons & UP_BUTTON) != 0)
@@ -606,7 +838,7 @@ void NotificationService::handleButtons(Watchy &watchy)
                 {
                     menuIndex = MENU_LENGTH - 1;
                 }
-                watchy.showMenu(menuIndex, true);
+                watchy.showFastMenu(menuIndex);
                 lastButtonActionAtMs = now;
             }
             else if ((pressedButtons & DOWN_BUTTON) != 0)
@@ -616,7 +848,7 @@ void NotificationService::handleButtons(Watchy &watchy)
                 {
                     menuIndex = 0;
                 }
-                watchy.showMenu(menuIndex, true);
+                watchy.showFastMenu(menuIndex);
                 lastButtonActionAtMs = now;
             }
         }
@@ -646,50 +878,23 @@ void NotificationService::handleButtons(Watchy &watchy)
         return;
     }
 
-    if ((pressedButtons & BACK_BUTTON) != 0)
-    {
-        backPressedAtMs = now;
-        backLongPressHandled = false;
-    }
-
-    if ((currentButtonMask & BACK_BUTTON) != 0 && !backLongPressHandled)
-    {
-        if (backPressedAtMs != 0 && now - backPressedAtMs >= EXIT_HOLD_MS)
-        {
-            backLongPressHandled = true;
-            menuVisible = false;
-            lockState();
-            trackedNotificationCount = 0;
-            selectTrackedNotification(0);
-            idleWatchFaceDrawn = false;
-            redrawRequested = true;
-            unlockState();
-            previousButtonMask = currentButtonMask;
-            return;
-        }
-    }
-
-    if ((releasedButtons & BACK_BUTTON) != 0)
-    {
-        if (!backLongPressHandled && now - lastButtonActionAtMs >= BUTTON_DEBOUNCE_MS)
-        {
-            selectRelativeNotification(-1);
-            lastButtonActionAtMs = now;
-        }
-        backPressedAtMs = 0;
-        backLongPressHandled = false;
-    }
-
     if (pressedButtons != 0 && now - lastButtonActionAtMs >= BUTTON_DEBOUNCE_MS)
     {
         if ((pressedButtons & MENU_BUTTON) != 0)
         {
-            performCurrentNotificationAction(true, watchy);
+            performAllNotificationDismissActions(watchy);
+            lastButtonActionAtMs = now;
+        }
+        else if ((pressedButtons & BACK_BUTTON) != 0)
+        {
+            selectRelativeNotification(1);
+            drawScreen(watchy);
             lastButtonActionAtMs = now;
         }
         else if ((pressedButtons & UP_BUTTON) != 0)
         {
-            selectRelativeNotification(1);
+            selectRelativeNotification(-1);
+            drawScreen(watchy);
             lastButtonActionAtMs = now;
         }
         else if ((pressedButtons & DOWN_BUTTON) != 0)
@@ -857,8 +1062,16 @@ bool NotificationService::isNewerNotification(
     const TrackedNotification &right
 ) const
 {
-    if (left.time > 0 && right.time > 0 && left.time != right.time)
+    if (left.time != right.time)
     {
+        if (left.time == 0)
+        {
+            return false;
+        }
+        if (right.time == 0)
+        {
+            return true;
+        }
         return left.time > right.time;
     }
     return left.sequence > right.sequence;
@@ -897,6 +1110,11 @@ void NotificationService::storeTrackedNotification(
         trackedNotifications[index].title,
         sizeof(trackedNotifications[index].title),
         notification.title
+    );
+    copyCString(
+        trackedNotifications[index].subtitle,
+        sizeof(trackedNotifications[index].subtitle),
+        notification.subtitle
     );
     copyCString(
         trackedNotifications[index].message,
@@ -969,6 +1187,7 @@ bool NotificationService::untrackNotification(uint32_t uuid)
 
     if (trackedNotificationCount == 0)
     {
+        followLatestNotification = true;
         selectTrackedNotification(0);
         return true;
     }
@@ -998,6 +1217,7 @@ void NotificationService::selectTrackedNotification(uint8_t index)
         currentNotificationUUID = 0;
         currentNotificationIndex = 0;
         titleText[0] = '\0';
+        subtitleText[0] = '\0';
         messageText[0] = '\0';
         return;
     }
@@ -1005,6 +1225,7 @@ void NotificationService::selectTrackedNotification(uint8_t index)
     currentNotificationIndex = index + 1;
     currentNotificationUUID = trackedNotifications[index].uuid;
     copyCString(titleText, sizeof(titleText), trackedNotifications[index].title);
+    copyCString(subtitleText, sizeof(subtitleText), trackedNotifications[index].subtitle);
     copyCString(messageText, sizeof(messageText), trackedNotifications[index].message);
 }
 
@@ -1013,17 +1234,23 @@ void NotificationService::selectRelativeNotification(int8_t delta)
     lockState();
     if (trackedNotificationCount > 1)
     {
-        uint8_t currentIndex = currentNotificationIndex > 0 ? currentNotificationIndex - 1 : 0;
-        if (delta < 0)
+        int16_t currentIndex = currentNotificationIndex > 0 ? currentNotificationIndex - 1 : 0;
+        int16_t nextIndex = currentIndex + delta;
+        if (nextIndex < 0)
         {
-            currentIndex = currentIndex == 0 ? trackedNotificationCount - 1 : currentIndex - 1;
+            nextIndex = 0;
         }
-        else
+        else if (nextIndex >= trackedNotificationCount)
         {
-            currentIndex = currentIndex + 1 >= trackedNotificationCount ? 0 : currentIndex + 1;
+            nextIndex = trackedNotificationCount - 1;
         }
-        selectTrackedNotification(currentIndex);
-        redrawRequested = true;
+
+        if (nextIndex != currentIndex)
+        {
+            selectTrackedNotification(static_cast<uint8_t>(nextIndex));
+            followLatestNotification = nextIndex == 0;
+            redrawRequested = true;
+        }
     }
     unlockState();
 }
@@ -1052,7 +1279,7 @@ void NotificationService::performCurrentNotificationAction(bool positiveAction, 
             copyCString(statusText, sizeof(statusText), "iOS");
             if (localDismiss)
             {
-                sendToPhone = false;
+                sendToPhone = connected && (currentNotification.eventFlags & actionFlag) != 0;
                 active = true;
                 activeInstance = this;
                 startupPending = false;
@@ -1083,7 +1310,7 @@ void NotificationService::performCurrentNotificationAction(bool positiveAction, 
         return;
     }
 
-    if (drawImmediately && !vibrationActive && !vibrationRequested)
+    if (drawImmediately)
     {
         drawScreen(watchy);
     }
@@ -1095,6 +1322,57 @@ void NotificationService::performCurrentNotificationAction(bool positiveAction, 
     if (positiveAction)
     {
         setStatus("iOS");
+    }
+}
+
+void NotificationService::performAllNotificationDismissActions(Watchy &watchy)
+{
+    uint32_t uuidsToClear[MAX_TRACKED_NOTIFICATIONS] = {};
+    uint8_t clearActionCount = 0;
+    bool drawImmediately = false;
+
+    lockState();
+    if (trackedNotificationCount > 0)
+    {
+        if (connected)
+        {
+            for (uint8_t index = 0; index < trackedNotificationCount; index++)
+            {
+                if ((trackedNotifications[index].eventFlags & ANCS::EventFlagNegativeAction) != 0)
+                {
+                    uuidsToClear[clearActionCount] = trackedNotifications[index].uuid;
+                    clearActionCount++;
+                }
+            }
+        }
+
+        copyCString(statusText, sizeof(statusText), "iOS");
+        trackedNotificationCount = 0;
+        for (uint8_t index = 0; index < MAX_TRACKED_NOTIFICATIONS; index++)
+        {
+            trackedNotifications[index] = TrackedNotification();
+        }
+        followLatestNotification = true;
+        selectTrackedNotification(0);
+        idleWatchFaceDrawn = false;
+        redrawRequested = true;
+        if (notificationsReady && !connected)
+        {
+            restartAdvertisingRequested = true;
+            restartAdvertisingAtMs = millis() + ADVERTISING_RESTART_DELAY_MS;
+        }
+        drawImmediately = !menuVisible;
+    }
+    unlockState();
+
+    if (drawImmediately)
+    {
+        drawScreen(watchy);
+    }
+
+    if (clearActionCount > 0)
+    {
+        sendNotificationClearActionsAsync(uuidsToClear, clearActionCount);
     }
 }
 
@@ -1125,6 +1403,41 @@ void NotificationService::sendNotificationActionAsync(uint32_t uuid, bool positi
         {
             notifications.actionNegative(uuid);
         }
+    }
+}
+
+void NotificationService::sendNotificationClearActionsAsync(const uint32_t *uuids, uint8_t count)
+{
+    if (uuids == nullptr || count == 0)
+    {
+        return;
+    }
+
+    PendingClearActions *actions = new PendingClearActions();
+    actions->notifications = &notifications;
+    actions->count = count > MAX_TRACKED_NOTIFICATIONS ? MAX_TRACKED_NOTIFICATIONS : count;
+    for (uint8_t index = 0; index < actions->count; index++)
+    {
+        actions->uuids[index] = uuids[index];
+    }
+
+    BaseType_t created = xTaskCreatePinnedToCore(
+        runClearActionsTask,
+        "ANCSClearAll",
+        4096,
+        actions,
+        1,
+        nullptr,
+        1
+    );
+    if (created != pdPASS)
+    {
+        for (uint8_t index = 0; index < actions->count; index++)
+        {
+            notifications.actionNegative(actions->uuids[index]);
+            delay(80);
+        }
+        delete actions;
     }
 }
 

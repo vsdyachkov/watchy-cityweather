@@ -476,6 +476,41 @@ int16_t textWidth(const OpenSansCondensedFont &font, const String &text)
     return width;
 }
 
+int16_t scaleCoordinate(int16_t value, uint8_t numerator, uint8_t denominator)
+{
+    if (denominator == 0) { return value; }
+    if (value >= 0)
+    {
+        return static_cast<int16_t>((value * numerator) / denominator);
+    }
+    return static_cast<int16_t>(-(((-value) * numerator + denominator - 1) / denominator));
+}
+
+int16_t scaleAdvance(uint8_t value, uint8_t numerator, uint8_t denominator)
+{
+    if (denominator == 0) { return value; }
+    return static_cast<int16_t>((value * numerator + denominator - 1) / denominator);
+}
+
+int16_t scaledTextWidth(
+    const OpenSansCondensedFont &font,
+    const String &text,
+    uint8_t scaleNumerator,
+    uint8_t scaleDenominator
+)
+{
+    int16_t width = 0;
+    for (uint16_t index = 0; index < text.length();)
+    {
+        uint16_t codepoint;
+        index = decodeUtf8Codepoint(text, index, &codepoint);
+        const OpenSansCondensedGlyph *glyph = findGlyph(font, codepoint);
+        if (glyph == nullptr) { glyph = findGlyph(font, '?'); }
+        if (glyph != nullptr) { width += scaleAdvance(glyph->xAdvance, scaleNumerator, scaleDenominator); }
+    }
+    return width;
+}
+
 void drawText(Adafruit_GFX &display, const OpenSansCondensedFont &font, const String &text, int16_t x, int16_t baselineY, uint16_t color)
 {
     int16_t cursorX = x;
@@ -500,6 +535,54 @@ void drawText(Adafruit_GFX &display, const OpenSansCondensedFont &font, const St
             }
         }
         cursorX += glyph->xAdvance;
+    }
+}
+
+void drawTextScaled(
+    Adafruit_GFX &display,
+    const OpenSansCondensedFont &font,
+    const String &text,
+    int16_t x,
+    int16_t baselineY,
+    uint8_t scaleNumerator,
+    uint8_t scaleDenominator,
+    uint16_t color
+)
+{
+    int16_t cursorX = x;
+    for (uint16_t index = 0; index < text.length();)
+    {
+        uint16_t codepoint;
+        index = decodeUtf8Codepoint(text, index, &codepoint);
+        const OpenSansCondensedGlyph *glyph = findGlyph(font, codepoint);
+        if (glyph == nullptr) { glyph = findGlyph(font, '?'); }
+        if (glyph == nullptr) { continue; }
+        uint16_t bitIndex = 0;
+        for (uint8_t row = 0; row < glyph->height; row++)
+        {
+            for (uint8_t column = 0; column < glyph->width; column++)
+            {
+                uint8_t byte = font.bitmap[glyph->bitmapOffset + bitIndex / 8];
+                if ((byte & (0x80 >> (bitIndex & 0x07))) != 0)
+                {
+                    int16_t pixelX =
+                        cursorX + scaleCoordinate(glyph->xOffset + column, scaleNumerator, scaleDenominator);
+                    int16_t pixelY =
+                        baselineY + scaleCoordinate(glyph->yOffset + row, scaleNumerator, scaleDenominator);
+                    int16_t nextX =
+                        cursorX + scaleCoordinate(glyph->xOffset + column + 1, scaleNumerator, scaleDenominator);
+                    int16_t nextY =
+                        baselineY + scaleCoordinate(glyph->yOffset + row + 1, scaleNumerator, scaleDenominator);
+                    int16_t pixelWidth = nextX - pixelX;
+                    int16_t pixelHeight = nextY - pixelY;
+                    if (pixelWidth < 1) { pixelWidth = 1; }
+                    if (pixelHeight < 1) { pixelHeight = 1; }
+                    display.fillRect(pixelX, pixelY, pixelWidth, pixelHeight, color);
+                }
+                bitIndex++;
+            }
+        }
+        cursorX += scaleAdvance(glyph->xAdvance, scaleNumerator, scaleDenominator);
     }
 }
 
@@ -537,6 +620,25 @@ uint16_t fittingUtf8Length(const OpenSansCondensedFont &font, const String &text
     return length;
 }
 
+uint16_t fittingUtf8LengthScaled(
+    const OpenSansCondensedFont &font,
+    const String &text,
+    int16_t maxWidth,
+    uint8_t scaleNumerator,
+    uint8_t scaleDenominator
+)
+{
+    uint16_t length = 0;
+    while (length < text.length())
+    {
+        uint16_t codepoint;
+        uint16_t nextLength = decodeUtf8Codepoint(text, length, &codepoint);
+        if (scaledTextWidth(font, text.substring(0, nextLength), scaleNumerator, scaleDenominator) > maxWidth) { break; }
+        length = nextLength;
+    }
+    return length;
+}
+
 uint16_t wrappedLineLength(const OpenSansCondensedFont &font, const String &text, int16_t maxWidth)
 {
     uint16_t length = 0;
@@ -554,6 +656,29 @@ uint16_t wrappedLineLength(const OpenSansCondensedFont &font, const String &text
     return fittingUtf8Length(font, text, maxWidth);
 }
 
+uint16_t wrappedLineLengthScaled(
+    const OpenSansCondensedFont &font,
+    const String &text,
+    int16_t maxWidth,
+    uint8_t scaleNumerator,
+    uint8_t scaleDenominator
+)
+{
+    uint16_t length = 0;
+    uint16_t lastSpace = 0;
+    while (length < text.length())
+    {
+        uint16_t codepoint;
+        uint16_t nextLength = decodeUtf8Codepoint(text, length, &codepoint);
+        if (scaledTextWidth(font, text.substring(0, nextLength), scaleNumerator, scaleDenominator) > maxWidth) { break; }
+        if (codepoint == ' ') { lastSpace = length; }
+        length = nextLength;
+    }
+    if (length == text.length()) { return length; }
+    if (lastSpace > 0) { return lastSpace; }
+    return fittingUtf8LengthScaled(font, text, maxWidth, scaleNumerator, scaleDenominator);
+}
+
 uint8_t printBlock(Adafruit_GFX &display, const OpenSansCondensedFont &font, String text, int16_t x, int16_t baselineY, int16_t maxWidth, uint8_t maxLines, uint16_t color, bool heavy)
 {
     text = normalize(text);
@@ -569,6 +694,49 @@ uint8_t printBlock(Adafruit_GFX &display, const OpenSansCondensedFont &font, Str
         if (heavy)
         {
             drawText(display, font, currentLine, x + 1, lineBaseline, color);
+        }
+        text = text.substring(length);
+        text.trim();
+        line++;
+    }
+    return line;
+}
+
+uint8_t printBlockScaled(
+    Adafruit_GFX &display,
+    const OpenSansCondensedFont &font,
+    String text,
+    int16_t x,
+    int16_t baselineY,
+    int16_t maxWidth,
+    uint8_t maxLines,
+    uint8_t scaleNumerator,
+    uint8_t scaleDenominator,
+    uint16_t color,
+    bool heavy,
+    int16_t lineSpacingAdjustment
+)
+{
+    text = normalize(text);
+    uint8_t line = 0;
+    int16_t lineHeight =
+        scaleAdvance(font.lineHeight, scaleNumerator, scaleDenominator) + lineSpacingAdjustment;
+    if (lineHeight < 1)
+    {
+        lineHeight = 1;
+    }
+    while (text.length() > 0 && line < maxLines)
+    {
+        uint16_t length =
+            wrappedLineLengthScaled(font, text, maxWidth, scaleNumerator, scaleDenominator);
+        if (length == 0) { break; }
+        String currentLine = text.substring(0, length);
+        currentLine.trim();
+        int16_t lineBaseline = baselineY + line * lineHeight;
+        drawTextScaled(display, font, currentLine, x, lineBaseline, scaleNumerator, scaleDenominator, color);
+        if (heavy)
+        {
+            drawTextScaled(display, font, currentLine, x + 1, lineBaseline, scaleNumerator, scaleDenominator, color);
         }
         text = text.substring(length);
         text.trim();
