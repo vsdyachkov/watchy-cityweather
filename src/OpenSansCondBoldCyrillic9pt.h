@@ -66,6 +66,20 @@ uint8_t printBlock(
     uint16_t color = 0,
     bool heavy = false
 );
+uint8_t printBlockScaled(
+    Adafruit_GFX &display,
+    const OpenSansCondensedFont &font,
+    String text,
+    int16_t x,
+    int16_t baselineY,
+    int16_t maxWidth,
+    uint8_t maxLines,
+    uint8_t scaleNumerator,
+    uint8_t scaleDenominator,
+    uint16_t color = 0,
+    bool heavy = false,
+    int16_t lineSpacingAdjustment = 0
+);
 void printLine(
     Adafruit_GFX &display,
     const OpenSansCondensedFont &font,
