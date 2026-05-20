@@ -35,7 +35,7 @@ CityWeather::CityWeather(const watchySettings &settings_) : Watchy(settings_), c
 bool CityWeather::connectWiFi()
 {
   restoreCityWeatherWiFiState();
-  const uint32_t timeoutMs = isNotificationsActive() ? 15000 : 10000;
+  const uint32_t timeoutMs = isNotificationsActive() ? 25000 : 10000;
 
   if (connectCityWeatherStoredWiFi(timeoutMs))
   {
@@ -98,6 +98,7 @@ constexpr int16_t ABOUT_BATTERY_GRAPH_X = 0;
 constexpr int16_t ABOUT_BATTERY_GRAPH_Y = 82;
 constexpr int16_t ABOUT_BATTERY_GRAPH_W = 200;
 constexpr int16_t ABOUT_BATTERY_GRAPH_H = 110;
+constexpr uint32_t ABOUT_UPDATE_CHECK_INTERVAL_SECONDS = SECS_PER_DAY;
 constexpr uint32_t INVALID_BATTERY_SAMPLE_HOUR = 0xFFFFFFFF;
 constexpr uint32_t BATTERY_HISTORY_STORAGE_MAGIC = 0x43574248;
 constexpr uint16_t BATTERY_HISTORY_STORAGE_VERSION_HOURLY = 1;
@@ -105,6 +106,9 @@ constexpr uint16_t BATTERY_HISTORY_STORAGE_VERSION = 2;
 constexpr const char *BATTERY_HISTORY_STORAGE_NAMESPACE = "cw-battery";
 constexpr const char *BATTERY_HISTORY_STORAGE_KEY = "history";
 constexpr const char *BATTERY_HISTORY_STORAGE_BACKUP_KEY = "history-bak";
+constexpr const char *ABOUT_UPDATE_STORAGE_NAMESPACE = "cw-update";
+constexpr const char *ABOUT_UPDATE_STATUS_KEY = "status";
+constexpr const char *ABOUT_UPDATE_CHECKED_AT_KEY = "checked";
 
 struct BatteryHistorySnapshot
 {
@@ -146,6 +150,80 @@ bool timeElementsLookValid(const tmElements_t &time)
       time.Hour <= 23 &&
       time.Minute <= 59 &&
       time.Second <= 59;
+}
+
+uint32_t rtcEpochSeconds(const tmElements_t &time)
+{
+  if (!timeElementsLookValid(time))
+  {
+    return 0;
+  }
+
+  time_t timestamp = makeTime(time);
+  if (timestamp <= 0)
+  {
+    return 0;
+  }
+  return static_cast<uint32_t>(timestamp);
+}
+
+String readCachedAboutUpdateStatus(bool *hasCache, uint32_t *checkedAt)
+{
+  *hasCache = false;
+  *checkedAt = 0;
+
+  Preferences preferences;
+  if (!preferences.begin(ABOUT_UPDATE_STORAGE_NAMESPACE, true))
+  {
+    return "";
+  }
+
+  String status = preferences.getString(ABOUT_UPDATE_STATUS_KEY, "");
+  *checkedAt = preferences.getUInt(ABOUT_UPDATE_CHECKED_AT_KEY, 0);
+  preferences.end();
+
+  status.trim();
+  *hasCache = status.length() > 0;
+  return status;
+}
+
+bool aboutUpdateCheckDue(bool hasCache, uint32_t checkedAt, const tmElements_t &currentTime)
+{
+  if (!hasCache || checkedAt == 0)
+  {
+    return true;
+  }
+
+  uint32_t now = rtcEpochSeconds(currentTime);
+  if (now == 0)
+  {
+    return false;
+  }
+  if (now < checkedAt)
+  {
+    return true;
+  }
+  return now - checkedAt >= ABOUT_UPDATE_CHECK_INTERVAL_SECONDS;
+}
+
+void saveCachedAboutUpdateStatus(const String &status, const tmElements_t &currentTime)
+{
+  String cleanStatus = status;
+  cleanStatus.trim();
+  if (cleanStatus.length() == 0)
+  {
+    return;
+  }
+
+  Preferences preferences;
+  if (!preferences.begin(ABOUT_UPDATE_STORAGE_NAMESPACE, false))
+  {
+    return;
+  }
+
+  preferences.putString(ABOUT_UPDATE_STATUS_KEY, cleanStatus);
+  preferences.putUInt(ABOUT_UPDATE_CHECKED_AT_KEY, rtcEpochSeconds(currentTime));
+  preferences.end();
 }
 
 uint32_t aboutUptimeSeconds(tmElements_t current, tmElements_t boot)
@@ -512,6 +590,7 @@ int compareVersionStrings(const String &currentVersion, const String &latestVers
 bool connectDefaultStoredWiFi(uint32_t timeoutMs)
 {
   WiFi.mode(WIFI_STA);
+  WiFi.setSleep(false);
   WiFi.persistent(true);
   if (WiFi.begin() == WL_CONNECT_FAILED)
   {
@@ -535,10 +614,11 @@ bool githubGetText(const String &url, String *payload)
 {
   WiFiClientSecure client;
   client.setInsecure();
+  client.setHandshakeTimeout(8);
 
   HTTPClient http;
-  http.setConnectTimeout(5000);
-  http.setTimeout(5000);
+  http.setConnectTimeout(8000);
+  http.setTimeout(8000);
   http.setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
   http.useHTTP10(true);
   if (!http.begin(client, url))
@@ -722,28 +802,28 @@ void CityWeather::showAboutScreen()
   recordBatteryHistory();
   Watchy::RTC.read(currentTime);
 
+  bool hasCachedUpdateStatus = false;
+  uint32_t cachedUpdateCheckedAt = 0;
+  String updateStatus =
+      readCachedAboutUpdateStatus(&hasCachedUpdateStatus, &cachedUpdateCheckedAt);
+  if (!hasCachedUpdateStatus)
+  {
+    updateStatus = "Not checked yet";
+  }
+
   aboutScreenVisible = true;
   lastAboutButtonActionAtMs = 0;
-  drawAboutScreenContent("Check updates...");
+  drawAboutScreenContent(updateStatus);
   display.display(true);
 
   display.setTextWrap(true);
   guiState = APP_STATE;
-  startAboutUpdateCheck();
 }
 
-String CityWeather::checkLatestReleaseStatus()
+String CityWeather::fetchLatestReleaseStatus()
 {
-  if (!connectWiFi())
-  {
-    WiFi.mode(WIFI_OFF);
-    return "Check failed";
-  }
-
   String latestTag;
   bool hasLatestTag = githubLatestTag(&latestTag);
-  WiFi.mode(WIFI_OFF);
-
   if (!hasLatestTag)
   {
     return "Check failed";
@@ -763,72 +843,26 @@ String CityWeather::checkLatestReleaseStatus()
   return "Up to date";
 }
 
-void CityWeather::runAboutUpdateCheckTask(void *parameter)
+void CityWeather::refreshCachedReleaseStatusIfDue()
 {
-  CityWeather *self = static_cast<CityWeather *>(parameter);
-  if (self != nullptr)
-  {
-    String updateStatus = self->checkLatestReleaseStatus();
-    updateStatus.toCharArray(self->aboutUpdateStatusText, sizeof(self->aboutUpdateStatusText));
-    self->aboutUpdateStatusText[sizeof(self->aboutUpdateStatusText) - 1] = '\0';
-    self->aboutUpdateStatusReady = true;
-    self->aboutUpdateCheckRunning = false;
-    self->aboutUpdateTaskHandle = nullptr;
-  }
-
-  vTaskDelete(nullptr);
-}
-
-void CityWeather::startAboutUpdateCheck()
-{
-  aboutUpdateStatusReady = false;
-  aboutUpdateStatusText[0] = '\0';
-
-  if (aboutUpdateCheckRunning)
+  if (isNotificationsActive() || WiFi.status() != WL_CONNECTED)
   {
     return;
   }
 
-  aboutUpdateCheckRunning = true;
-  BaseType_t created = xTaskCreatePinnedToCore(
-      runAboutUpdateCheckTask,
-      "AboutUpdate",
-      8192,
-      this,
-      1,
-      &aboutUpdateTaskHandle,
-      1
-  );
-  if (created != pdPASS)
-  {
-    aboutUpdateTaskHandle = nullptr;
-    strncpy(aboutUpdateStatusText, "Check failed", sizeof(aboutUpdateStatusText) - 1);
-    aboutUpdateStatusText[sizeof(aboutUpdateStatusText) - 1] = '\0';
-    aboutUpdateStatusReady = true;
-    aboutUpdateCheckRunning = false;
-  }
-}
+  Watchy::RTC.read(currentTime);
 
-void CityWeather::refreshAboutUpdateCheckIfNeeded()
-{
-  if (!aboutUpdateStatusReady)
+  bool hasCachedUpdateStatus = false;
+  uint32_t cachedUpdateCheckedAt = 0;
+  readCachedAboutUpdateStatus(&hasCachedUpdateStatus, &cachedUpdateCheckedAt);
+  if (!aboutUpdateCheckDue(hasCachedUpdateStatus, cachedUpdateCheckedAt, currentTime))
   {
     return;
   }
 
-  char statusText[sizeof(aboutUpdateStatusText)];
-  strncpy(statusText, aboutUpdateStatusText, sizeof(statusText) - 1);
-  statusText[sizeof(statusText) - 1] = '\0';
-  aboutUpdateStatusReady = false;
-
-  if (!isAboutScreenActive())
-  {
-    return;
-  }
-
-  drawAboutUpdateStatus(String(statusText));
-  display.displayWindow(0, 20, 200, 22);
-  display.setTextWrap(true);
+  String updateStatus = fetchLatestReleaseStatus();
+  Watchy::RTC.read(currentTime);
+  saveCachedAboutUpdateStatus(updateStatus, currentTime);
 }
 
 void CityWeather::handleAboutScreenLoop()
@@ -882,8 +916,7 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
   constexpr int16_t lineStep = 20;
   constexpr int16_t appLineY = 14;
   constexpr int16_t updateLineY = appLineY + lineStep;
-  constexpr int16_t uptimeLineY = updateLineY + lineStep;
-  constexpr int16_t graphTitleY = uptimeLineY + lineStep;
+  constexpr int16_t graphTitleY = updateLineY + lineStep * 2;
   constexpr int16_t graphTitleGap = 8;
 
   printFitLine(
@@ -895,18 +928,6 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
   );
   printFitLine(display, updateStatus, 0, updateLineY, 200);
 
-  uint32_t totalSeconds = aboutUptimeSeconds(currentTime, bootTime);
-  uint16_t minutes = (totalSeconds % SECS_PER_HOUR) / SECS_PER_MIN;
-  uint16_t hours = (totalSeconds % SECS_PER_DAY) / SECS_PER_HOUR;
-  uint16_t days = totalSeconds / SECS_PER_DAY;
-  printFitLine(
-      display,
-      "Uptime: " + String(days) + "d" + String(hours) + "h" + String(minutes) + "m",
-      0,
-      uptimeLineY,
-      200
-  );
-
   printFitLine(display, "Battery Usage 24H", 0, graphTitleY, 200);
   drawBatteryHistoryGraph(
       ABOUT_BATTERY_GRAPH_X,
@@ -914,16 +935,6 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
       ABOUT_BATTERY_GRAPH_W,
       ABOUT_BATTERY_GRAPH_H
   );
-}
-
-void CityWeather::drawAboutUpdateStatus(const String &updateStatus)
-{
-  display.setFullWindow();
-  display.setFont(&FreeMonoBold9pt7b);
-  display.setTextColor(GxEPD_BLACK);
-  display.setTextWrap(false);
-  display.fillRect(0, 20, 200, 22, GxEPD_WHITE);
-  printFitLine(display, updateStatus, 0, 34, 200);
 }
 
 void CityWeather::refreshAboutBatteryGraphIfNeeded()
@@ -1190,15 +1201,18 @@ void CityWeather::drawCalendar(bool showWeather)
     
     if (showWeather)
     {
-      // weather
-      const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
-      display.drawBitmap(i*28 + 3, 137, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
+      if (currentWeek[i].weatherCode >= 0)
+      {
+        // weather
+        const unsigned char* weatherIcon = cityWeatherService.weatherNameFromCode(currentWeek[i].weatherCode);
+        display.drawBitmap(i*28 + 3, 137, weatherIcon, WEATHER_ICON_WIDTH, WEATHER_ICON_HEIGHT, GxEPD_BLACK, GxEPD_WHITE);
 
-      // tMax & tMin
-      String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
-      String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
-      OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMax, (i*28) + 14, 178, 28, GxEPD_BLACK, GxEPD_WHITE);
-      OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMin, (i*28) + 14, 196, 28, GxEPD_BLACK, GxEPD_WHITE);
+        // tMax & tMin
+        String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
+        String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
+        OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMax, (i*28) + 14, 178, 28, GxEPD_BLACK, GxEPD_WHITE);
+        OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMin, (i*28) + 14, 196, 28, GxEPD_BLACK, GxEPD_WHITE);
+      }
     }
     
     // lines between days
@@ -1220,7 +1234,7 @@ void CityWeather::drawCalendar(bool showWeather)
 void CityWeather::drawWatchFace()
 {
   Watchy::RTC.read(currentTime);
-  if (!isNotificationsActive() && cityWeatherService.updateWifiData())
+  if (cityWeatherService.updateWifiData())
   {
     Watchy::RTC.read(currentTime);
   }
@@ -1234,13 +1248,11 @@ void CityWeather::drawWatchFaceContent()
   drawStatusBar();
   drawCity();
 
-  const bool hasForecastData = cityWeatherService.hasCurrentWeekForecastData();
+  const bool hasForecastData = cityWeatherService.hasForecastData();
   if (!hasForecastData && !WIFI_CONFIGURED) {
     drawTip();
-  } else if (!hasForecastData) {
-    drawWeatherUnavailable();
   } else {
-    drawCalendar();
+    drawCalendar(hasForecastData);
   }
 };
 
@@ -1274,7 +1286,6 @@ void CityWeather::showAppTick()
 {
   if (isAboutScreenActive())
   {
-    refreshAboutUpdateCheckIfNeeded();
     refreshAboutBatteryGraphIfNeeded();
   }
 }

@@ -21,6 +21,10 @@ constexpr int16_t STATUS_BAR_BLUETOOTH_ICON_Y = 2;
 constexpr int16_t STATUS_BAR_ICON_WIDTH = 19;
 constexpr int16_t STATUS_BAR_ICON_HEIGHT = 16;
 constexpr int16_t STATUS_BAR_ICON_GAP = 4;
+constexpr int16_t STATUS_BAR_NOTIFICATION_BADGE_Y = 1;
+constexpr int16_t STATUS_BAR_NOTIFICATION_BADGE_WIDTH = 22;
+constexpr int16_t STATUS_BAR_NOTIFICATION_BADGE_HEIGHT = 16;
+constexpr int16_t STATUS_BAR_NOTIFICATION_BADGE_BASELINE = 16;
 constexpr uint32_t WIFI_STATE_STORAGE_MAGIC = 0x43575746;
 constexpr uint32_t WIFI_CREDENTIALS_STORAGE_MAGIC = 0x43575743;
 constexpr uint16_t WIFI_STATE_STORAGE_VERSION = 1;
@@ -281,6 +285,82 @@ int16_t drawConnectivityIcons(
     return leftEdge;
 }
 
+String normalizedNotificationCounter(const char *notificationCounter)
+{
+    if (notificationCounter == nullptr)
+    {
+        return "";
+    }
+
+    String counterText = String(notificationCounter);
+    counterText.trim();
+    int16_t slashIndex = counterText.indexOf('/');
+    if (slashIndex >= 0 && slashIndex + 1 < static_cast<int16_t>(counterText.length()))
+    {
+        counterText = counterText.substring(slashIndex + 1);
+        counterText.trim();
+    }
+
+    int16_t counter = counterText.toInt();
+    if (counter <= 0)
+    {
+        return "";
+    }
+    if (counter > 99)
+    {
+        return "99+";
+    }
+    return String(counter);
+}
+
+int16_t drawNotificationBadge(
+    Adafruit_GFX &display,
+    int16_t rightEdge,
+    const char *notificationCounter
+)
+{
+    String counterText = normalizedNotificationCounter(notificationCounter);
+    if (counterText.length() == 0)
+    {
+        return rightEdge;
+    }
+
+    int16_t badgeWidth = STATUS_BAR_NOTIFICATION_BADGE_WIDTH;
+    if (counterText.length() > 2)
+    {
+        badgeWidth += 4;
+    }
+
+    int16_t badgeX = rightEdge - badgeWidth;
+    display.fillRoundRect(
+        badgeX,
+        STATUS_BAR_NOTIFICATION_BADGE_Y,
+        badgeWidth,
+        STATUS_BAR_NOTIFICATION_BADGE_HEIGHT,
+        3,
+        GxEPD_BLACK
+    );
+    display.fillTriangle(
+        badgeX + 5,
+        STATUS_BAR_NOTIFICATION_BADGE_Y + STATUS_BAR_NOTIFICATION_BADGE_HEIGHT - 1,
+        badgeX + 9,
+        STATUS_BAR_NOTIFICATION_BADGE_Y + STATUS_BAR_NOTIFICATION_BADGE_HEIGHT - 1,
+        badgeX + 5,
+        STATUS_BAR_NOTIFICATION_BADGE_Y + STATUS_BAR_NOTIFICATION_BADGE_HEIGHT + 2,
+        GxEPD_BLACK
+    );
+    OpenSansCondensed::printCentered(
+        display,
+        OpenSansCondBoldCyrillic9pt,
+        counterText,
+        badgeX + badgeWidth / 2,
+        STATUS_BAR_NOTIFICATION_BADGE_BASELINE,
+        badgeWidth - 3,
+        GxEPD_WHITE
+    );
+    return badgeX;
+}
+
 void drawDitheredHorizontalLine(
     Adafruit_GFX &display,
     int16_t x0,
@@ -450,22 +530,15 @@ void drawCityWeatherStatusBar(
     int16_t iconRight = batterySlotLeft - STATUS_BAR_ICON_GAP;
     int16_t iconsLeft =
         drawConnectivityIcons(Watchy::display, iconRight, bluetoothVisible, WIFI_CONFIGURED);
-    if (notificationCounter != nullptr && notificationCounter[0] != '\0')
+    String counterText = normalizedNotificationCounter(notificationCounter);
+    if (counterText.length() > 0)
     {
-        int16_t counterLeft = timeRight + STATUS_BAR_ICON_GAP;
-        int16_t counterRight = iconsLeft - STATUS_BAR_ICON_GAP;
-        int16_t counterWidth = counterRight - counterLeft;
-        if (counterWidth > 10)
+        int16_t badgeRight = iconsLeft == iconRight
+            ? iconRight
+            : iconsLeft - STATUS_BAR_ICON_GAP;
+        if (badgeRight - STATUS_BAR_NOTIFICATION_BADGE_WIDTH > timeRight + STATUS_BAR_ICON_GAP)
         {
-            OpenSansCondensed::printCentered(
-                Watchy::display,
-                OpenSansCondBoldCyrillic9pt,
-                notificationCounter,
-                counterLeft + counterWidth / 2,
-                17,
-                counterWidth,
-                GxEPD_BLACK
-            );
+            drawNotificationBadge(Watchy::display, badgeRight, counterText.c_str());
         }
     }
     printRightAligned(Watchy::display, STATUS_BAR_BATTERY_RIGHT, 16, batteryText);
