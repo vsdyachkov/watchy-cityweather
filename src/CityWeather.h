@@ -21,7 +21,7 @@ class CityWeather : public Watchy
         void resetMenuStatusBarRefresh();
         void showAboutScreen();
         bool isAboutScreenActive() const;
-        String checkLatestReleaseStatus();
+        void refreshCachedReleaseStatusIfDue();
 
         void drawTime();
         void drawStatusBar();
@@ -36,22 +36,15 @@ class CityWeather : public Watchy
         NotificationService notificationService;
         bool menuStatusBarDrawn = false;
         bool aboutScreenVisible = false;
-        volatile bool aboutUpdateCheckRunning = false;
-        volatile bool aboutUpdateStatusReady = false;
         uint8_t lastMenuStatusMinute = 255;
         uint32_t lastMenuStatusBarRefreshAtMs = 0;
         uint32_t lastAboutButtonActionAtMs = 0;
-        TaskHandle_t aboutUpdateTaskHandle = nullptr;
-        char aboutUpdateStatusText[40] = "";
         
-        static void runAboutUpdateCheckTask(void *parameter);
         virtual void handleButtonPress();
-        void startAboutUpdateCheck();
-        void refreshAboutUpdateCheckIfNeeded();
         void handleAboutScreenLoop();
         void recordBatteryHistory();
+        String fetchLatestReleaseStatus();
         void drawAboutScreenContent(const String &updateStatus);
-        void drawAboutUpdateStatus(const String &updateStatus);
         void refreshAboutBatteryGraphIfNeeded();
         void drawBatteryHistoryGraph(int16_t x, int16_t y, int16_t w, int16_t h);
 };

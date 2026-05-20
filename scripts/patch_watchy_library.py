@@ -39,6 +39,7 @@ MENU_SHOWN_HOOK_PATCH_MARKER = f"Menu shown hook added by {SCRIPT_PATH}"
 APP_VERSION_ABOUT_PATCH_MARKER = f"CityWeather app version added by {SCRIPT_PATH}"
 ABOUT_SCREEN_HOOK_PATCH_MARKER = f"About screen hook added by {SCRIPT_PATH}"
 ANCS_SUBTITLE_PATCH_MARKER = f"ANCS subtitle added by {SCRIPT_PATH}"
+ANCS_STOP_CLEANUP_PATCH_MARKER = f"ANCS stop cleanup added by {SCRIPT_PATH}"
 
 
 def patch_watchy(*_args, **_kwargs):
@@ -162,6 +163,7 @@ def patch_ancs_library(project_dir):
     ble_notification_h = ancs_src / "ble_notification.h"
     ancs_ble_client_h = ancs_src / "ancs_ble_client.h"
     ancs_ble_client_cpp = ancs_src / "ancs_ble_client.cpp"
+    esp32notifications_cpp = ancs_src / "esp32notifications.cpp"
 
     if ble_notification_h.exists():
         patch_ancs_notification_header(ble_notification_h)
@@ -177,6 +179,88 @@ def patch_ancs_library(project_dir):
         patch_ancs_ble_client(ancs_ble_client_cpp)
     else:
         print("ANCS subtitle patch: ancs_ble_client.cpp not found")
+
+    if esp32notifications_cpp.exists():
+        patch_ancs_notifications_stop(esp32notifications_cpp)
+    else:
+        print("ANCS stop cleanup patch: esp32notifications.cpp not found")
+
+
+def patch_ancs_notifications_stop(esp32notifications_cpp):
+    text = esp32notifications_cpp.read_text()
+    original_text = text
+    patched_stop = (
+        "bool BLENotifications::stop()\n"
+        "{\n"
+        f"\t// {ANCS_STOP_CLEANUP_PATCH_MARKER}\n"
+        "\tif (isAdvertising)\n"
+        "\t{\n"
+        "\t\tBLEDevice::stopAdvertising();\n"
+        "\t\tisAdvertising = false;\n"
+        "\t}\n"
+        "\tif (server != nullptr && server->getConnectedCount() > 0)\n"
+        "\t{\n"
+        "\t\tserver->disconnect(server->getConnId());\n"
+        "\t\tdelay(250);\n"
+        "\t}\n"
+        "\tif (client != nullptr)\n"
+        "\t{\n"
+        "\t\tif (client->clientTaskHandle != nullptr)\n"
+        "\t\t{\n"
+        "\t\t\t::vTaskDelete(client->clientTaskHandle);\n"
+        "\t\t\tclient->clientTaskHandle = nullptr;\n"
+        "\t\t}\n"
+        "\t\tdelete client;\n"
+        "\t\tclient = nullptr;\n"
+        "\t}\n"
+        "\treturn true;\n"
+        "}\n"
+    )
+
+    if patched_stop in text:
+        print("ANCS stop cleanup patch: already applied")
+        return
+
+    previous_patched_stop = (
+        "bool BLENotifications::stop()\n"
+        "{\n"
+        f"\t// {ANCS_STOP_CLEANUP_PATCH_MARKER}\n"
+        "\tif (isAdvertising)\n"
+        "\t{\n"
+        "\t\tBLEDevice::stopAdvertising();\n"
+        "\t\tisAdvertising = false;\n"
+        "\t}\n"
+        "\tif (client != nullptr)\n"
+        "\t{\n"
+        "\t\tif (client->clientTaskHandle != nullptr)\n"
+        "\t\t{\n"
+        "\t\t\t::vTaskDelete(client->clientTaskHandle);\n"
+        "\t\t\tclient->clientTaskHandle = nullptr;\n"
+        "\t\t}\n"
+        "\t\tdelete client;\n"
+        "\t\tclient = nullptr;\n"
+        "\t}\n"
+        "\tserver = nullptr;\n"
+        "\tBLEDevice::deinit(false);\n"
+        "\treturn true;\n"
+        "}\n"
+    )
+    if previous_patched_stop in text:
+        text = text.replace(previous_patched_stop, patched_stop)
+    else:
+        text = replace_or_log(
+            text,
+            "bool BLENotifications::stop()\n"
+            "{\n"
+            "\tBLEDevice::deinit(false);\n"
+            "\treturn true;\n"
+            "}\n",
+            patched_stop,
+            "ANCS stop cleanup patch",
+        )
+
+    if text != original_text:
+        esp32notifications_cpp.write_text(text)
 
 
 def patch_ancs_notification_header(ble_notification_h):

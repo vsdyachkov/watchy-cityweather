@@ -19,6 +19,7 @@ public:
     void tick(Watchy &watchy);
     bool isActive() const;
     bool isMenuVisible() const;
+    void setNetworkBusy(bool busy);
 
 private:
     static constexpr char DEVICE_NAME[] = "Watchy";
@@ -80,13 +81,16 @@ private:
     bool notificationBatchPending = false;
     bool notificationStatusBarRefreshRequested = false;
     bool aboutVisible = false;
+    bool networkBusy = false;
+    bool bluetoothStoppedForNetwork = false;
+    bool bluetoothRestartPending = false;
 
     volatile bool redrawRequested = true;
     volatile bool restartAdvertisingRequested = false;
     volatile bool vibrationRequested = false;
 
     uint32_t restartAdvertisingAtMs = 0;
-    uint32_t vibrationStopAtMs = 0;
+    uint32_t bluetoothRestartAtMs = 0;
     uint32_t backPressedAtMs = 0;
     uint32_t lastButtonActionAtMs = 0;
     uint32_t lastAdvertisingAttemptAtMs = 0;

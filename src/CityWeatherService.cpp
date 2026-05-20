@@ -2,6 +2,7 @@
 #include "CityWeather.h"
 #include "Images.h"
 #include <Preferences.h>
+#include <WiFiClientSecure.h>
 #include <stddef.h>
 #include <string.h>
 
@@ -10,6 +11,7 @@
 #define OPEN_METEO_UPDATE_INTERVAL 60
 #define WEATHER_UPDATE_INTERVAL_SECONDS (OPEN_METEO_UPDATE_INTERVAL * 60)
 #define NETWORK_RETRY_INTERVAL_SECONDS (60 * 60)
+#define EMPTY_FORECAST_RETRY_INTERVAL_SECONDS (5 * 60)
 
 #define NUM_DAYS 23
 
@@ -174,6 +176,104 @@ static bool forecastContainsDate(uint32_t targetDate)
         }
     }
     return false;
+}
+
+static bool copyForecastForDate(uint32_t targetDate, DailyForecast &targetForecast)
+{
+    if (!forecastReady)
+    {
+        return false;
+    }
+
+    for (int forecastIndex = 0; forecastIndex < NUM_DAYS; forecastIndex++)
+    {
+        if (
+            static_cast<uint32_t>(forecast[forecastIndex].date) == targetDate &&
+            forecastEntryLooksUsable(forecast[forecastIndex])
+        )
+        {
+            targetForecast = forecast[forecastIndex];
+            return true;
+        }
+    }
+    return false;
+}
+
+static bool jsonValueIsUsable(const JSONVar &value)
+{
+    String type = JSON.typeof(value);
+    return type != "undefined" && type != "null";
+}
+
+static void setMissingForecastDay(
+    DailyForecast &targetForecast,
+    uint32_t targetDate,
+    const char *weekDay
+)
+{
+    targetForecast.weekDay = weekDay;
+    targetForecast.date = targetDate;
+    targetForecast.tempMax = 0;
+    targetForecast.tempMin = 0;
+    targetForecast.weatherCode = -1;
+}
+
+static bool fillWeekFromAnchor(time_t anchorTime, DailyForecast currentWeek[7], uint8_t &foundCount)
+{
+    if (anchorTime <= 0)
+    {
+        return false;
+    }
+
+    tmElements_t tmAnchor;
+    breakTime(anchorTime, tmAnchor);
+    int daysBack = (tmAnchor.Wday + 5) % 7;
+    time_t mondayT = anchorTime - daysBack * SECS_PER_DAY;
+    foundCount = 0;
+
+    for (int weekIndex = 0; weekIndex < 7; weekIndex++)
+    {
+        time_t dayT = mondayT + weekIndex * SECS_PER_DAY;
+        tmElements_t tmDay;
+        breakTime(dayT, tmDay);
+        uint32_t targetDate =
+            (tmDay.Year + 1970) * 10000 + tmDay.Month * 100 + tmDay.Day;
+
+        if (copyForecastForDate(targetDate, currentWeek[weekIndex]))
+        {
+            foundCount++;
+        }
+        else
+        {
+            setMissingForecastDay(currentWeek[weekIndex], targetDate, wdayNames[weekIndex]);
+        }
+        currentWeek[weekIndex].weekDay = wdayNames[weekIndex];
+    }
+    return true;
+}
+
+static void fillWeekFromStoredForecast(DailyForecast currentWeek[7])
+{
+    int weekIndex = 0;
+    for (int forecastIndex = 0; forecastIndex < NUM_DAYS && weekIndex < 7; forecastIndex++)
+    {
+        if (!forecastEntryLooksUsable(forecast[forecastIndex]))
+        {
+            continue;
+        }
+        currentWeek[weekIndex] = forecast[forecastIndex];
+        currentWeek[weekIndex].weekDay = wdayNames[weekIndex];
+        weekIndex++;
+    }
+
+    while (weekIndex < 7)
+    {
+        uint32_t date = weekIndex > 0
+            ? static_cast<uint32_t>(currentWeek[weekIndex - 1].date) + 1
+            : 20200101;
+        setMissingForecastDay(currentWeek[weekIndex], date, wdayNames[weekIndex]);
+        weekIndex++;
+    }
 }
 
 static bool weatherCacheInMemoryLooksValid()
@@ -385,6 +485,8 @@ bool CityWeatherService::getLocationData()
 bool CityWeatherService::getWeatherData()
 {
     ensureWeatherCacheLoaded();
+    WiFiClientSecure client;
+    client.setInsecure();
     HTTPClient http;
     http.setConnectTimeout(20000);
     String weatherQueryURL = OPEN_METEO_URL;
@@ -399,7 +501,7 @@ bool CityWeatherService::getWeatherData()
         return false;
     }
 
-    http.begin(weatherQueryURL);
+    http.begin(client, weatherQueryURL);
     int httpCode = http.GET();
     bool success = false;
 
@@ -420,37 +522,60 @@ bool CityWeatherService::getWeatherData()
 
             for (int i = 0; i < NUM_DAYS; i++)
             {
+                forecast[i].weekDay = nullptr;
+                forecast[i].date = 0;
+                forecast[i].tempMax = 0;
+                forecast[i].tempMin = 0;
+                forecast[i].weatherCode = -1;
+            }
+
+            uint8_t validForecastCount = 0;
+            for (int i = 0; i < NUM_DAYS; i++)
+            {
                 if (
                     JSON.typeof(times[i]) != "string" ||
-                    JSON.typeof(temps_max[i]) == "undefined" ||
-                    JSON.typeof(temps_min[i]) == "undefined" ||
-                    JSON.typeof(codes[i]) == "undefined"
+                    !jsonValueIsUsable(temps_max[i]) ||
+                    !jsonValueIsUsable(temps_min[i]) ||
+                    !jsonValueIsUsable(codes[i])
                 )
                 {
-                    Serial.println("Incomplete weather JSON");
-                    http.end();
-                    return false;
+                    continue;
                 }
 
                 const char *dateStr = (const char *)times[i];
                 if (dateStr == nullptr || strlen(dateStr) < 10)
                 {
-                    Serial.println("Invalid weather date");
-                    http.end();
-                    return false;
+                    continue;
                 }
                 int year = atoi(String(dateStr).substring(0, 4).c_str());
                 int month = atoi(String(dateStr).substring(5, 7).c_str());
                 int day = atoi(String(dateStr).substring(8, 10).c_str());
                 uint32_t dateNum = year * 10000 + month * 100 + day;
 
-                forecast[i].date = dateNum;
-                forecast[i].tempMax = static_cast<int>(round((double)temps_max[i]));
-                forecast[i].tempMin = static_cast<int>(round((double)temps_min[i]));
-                forecast[i].weatherCode = (int)codes[i];
+                int weatherCode = (int)codes[i];
+                int tempMax = static_cast<int>(round((double)temps_max[i]));
+                int tempMin = static_cast<int>(round((double)temps_min[i]));
+                if (
+                    dateNum <= 20200101 ||
+                    tempMax < -100 ||
+                    tempMax > 100 ||
+                    tempMin < -100 ||
+                    tempMin > 100 ||
+                    weatherCode < 0 ||
+                    weatherCode > 99
+                )
+                {
+                    continue;
+                }
+
+                forecast[validForecastCount].date = dateNum;
+                forecast[validForecastCount].tempMax = tempMax;
+                forecast[validForecastCount].tempMin = tempMin;
+                forecast[validForecastCount].weatherCode = weatherCode;
+                validForecastCount++;
             }
             sortForecasts(forecast, NUM_DAYS);
-            forecastReady = true;
+            forecastReady = validForecastCount > 0;
             if (forecastArrayLooksValid())
             {
                 Serial.println("OK");
@@ -479,13 +604,29 @@ bool CityWeatherService::updateWifiData()
     Watchy::RTC.read(tm);
     time_t now = makeTime(tm);
     long diff = now - savedTime;
+    bool hasAnyForecast = hasForecastData();
 
     if (nextWeatherRetryTime != 0 && now < nextWeatherRetryTime) {
+        if (
+            !hasAnyForecast &&
+            nextWeatherRetryTime - now > EMPTY_FORECAST_RETRY_INTERVAL_SECONDS
+        )
+        {
+            nextWeatherRetryTime = 0;
+        }
+        else
+        {
         Serial.println("Skip update until next retry window");
         return false;
+        }
     }
 
-    if (hasCurrentWeekForecastData() && savedTime != 0 && diff <= WEATHER_UPDATE_INTERVAL_SECONDS) {
+    if (
+        hasCurrentWeekForecastData() &&
+        savedTime != 0 &&
+        diff >= 0 &&
+        diff <= WEATHER_UPDATE_INTERVAL_SECONDS
+    ) {
         Serial.println("Don't need update");
         return false;
     }
@@ -525,6 +666,7 @@ bool CityWeatherService::updateWifiData()
                     savedTime = makeTime(tm);
                     nextWeatherRetryTime = 0;
                     saveWeatherCacheToStorage();
+                    cityWeather.refreshCachedReleaseStatusIfDue();
                 }
             }
             else
@@ -542,7 +684,9 @@ bool CityWeatherService::updateWifiData()
 
     if (!success)
     {
-        nextWeatherRetryTime = now + NETWORK_RETRY_INTERVAL_SECONDS;
+        nextWeatherRetryTime = now + (
+            hasAnyForecast ? NETWORK_RETRY_INTERVAL_SECONDS : EMPTY_FORECAST_RETRY_INTERVAL_SECONDS
+        );
     }
 
     return success;
@@ -621,38 +765,24 @@ void CityWeatherService::getCurrentWeekForecast(DailyForecast currentWeek[7])
     tmElements_t tmNow;
     Watchy::RTC.read(tmNow);
     time_t nowT = makeTime(tmNow);
-    int wday = tmNow.Wday;
-    int daysBack = (wday + 5) % 7; // пн→0, вт→1,… вс→6
-    time_t mondayT = nowT - daysBack * SECS_PER_DAY;
+    uint8_t foundCount = 0;
+    fillWeekFromAnchor(nowT, currentWeek, foundCount);
 
-    for (int weekIndex = 0; weekIndex < 7; weekIndex++)
+    if (foundCount > 0)
     {
-        time_t dayT = mondayT + weekIndex * SECS_PER_DAY;
-        tmElements_t tmDay;
-        breakTime(dayT, tmDay);
-        uint32_t targetDate = (tmDay.Year + 1970) * 10000 + tmDay.Month * 100 + tmDay.Day;
+        return;
+    }
 
-        bool found = false;
-        for (int forecastIndex = 0; forecastIndex < NUM_DAYS; forecastIndex++)
-        {
-            if (forecast[forecastIndex].date == targetDate)
-            {
-                currentWeek[weekIndex] = forecast[forecastIndex];
-                found = true;
-                break;
-            }
-        }
+    uint8_t savedWeekFoundCount = 0;
+    if (savedTime > 0 && fillWeekFromAnchor(savedTime, currentWeek, savedWeekFoundCount) &&
+        savedWeekFoundCount > 0)
+    {
+        return;
+    }
 
-        if (!found)
-        {
-            currentWeek[weekIndex].date = targetDate;
-            currentWeek[weekIndex].tempMax = 0;
-            currentWeek[weekIndex].tempMin = 0;
-            currentWeek[weekIndex].weatherCode = 0;
-        }
-        
-        
-        currentWeek[weekIndex].weekDay = wdayNames[weekIndex];
+    if (hasForecastData())
+    {
+        fillWeekFromStoredForecast(currentWeek);
     }
 }
 

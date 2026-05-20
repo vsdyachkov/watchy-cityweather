@@ -62,6 +62,7 @@ void NotificationService::stop()
     notificationBatchPending = false;
     notificationStatusBarRefreshRequested = false;
     restartAdvertisingRequested = false;
+    bluetoothRestartPending = false;
     prepareBluetoothForSleep();
     setBluetoothDisplayMode(false);
 }
@@ -75,6 +76,12 @@ void NotificationService::tick(Watchy &watchy)
 
     if (startupPending)
     {
+        if (networkBusy)
+        {
+            handleButtons(watchy);
+            return;
+        }
+
         uint8_t currentButtonMask = readButtonMask();
         previousButtonMask = currentButtonMask;
         if (currentButtonMask != 0)
@@ -88,7 +95,21 @@ void NotificationService::tick(Watchy &watchy)
         previousButtonMask = readButtonMask();
     }
 
-    if (restartAdvertisingRequested && static_cast<int32_t>(millis() - restartAdvertisingAtMs) >= 0)
+    if (
+        !networkBusy &&
+        bluetoothRestartPending &&
+        static_cast<int32_t>(millis() - bluetoothRestartAtMs) >= 0
+    )
+    {
+        lockState();
+        bluetoothRestartPending = false;
+        restartAdvertisingRequested = false;
+        lastAdvertisingAttemptAtMs = millis();
+        unlockState();
+        notifications.startAdvertising();
+    }
+
+    if (!networkBusy && restartAdvertisingRequested && static_cast<int32_t>(millis() - restartAdvertisingAtMs) >= 0)
     {
         bool shouldRestartAdvertising = false;
         lockState();
@@ -108,7 +129,7 @@ void NotificationService::tick(Watchy &watchy)
             notifications.startAdvertising();
         }
     }
-    else if (notificationsReady && !startupPending)
+    else if (!networkBusy && notificationsReady && !startupPending)
     {
         bool shouldRefreshAdvertising = false;
         uint32_t now = millis();
@@ -130,8 +151,11 @@ void NotificationService::tick(Watchy &watchy)
         }
     }
 
-    flushNotificationBatchIfReady();
-    if (!aboutVisible)
+    if (!networkBusy)
+    {
+        flushNotificationBatchIfReady();
+    }
+    if (!networkBusy && !aboutVisible)
     {
         refreshNotificationStatusBarIfNeeded(watchy);
     }
@@ -159,6 +183,52 @@ bool NotificationService::isActive() const
 bool NotificationService::isMenuVisible() const
 {
     return menuVisible;
+}
+
+void NotificationService::setNetworkBusy(bool busy)
+{
+    bool shouldStopBluetooth = false;
+    bool shouldQueueBluetoothRestart = false;
+
+    lockState();
+    if (networkBusy == busy)
+    {
+        unlockState();
+        return;
+    }
+
+    networkBusy = busy;
+    if (busy)
+    {
+        restartAdvertisingRequested = false;
+        bluetoothRestartPending = false;
+        notificationStatusBarRefreshRequested = false;
+        shouldStopBluetooth = notificationsReady;
+        bluetoothStoppedForNetwork = shouldStopBluetooth;
+        connected = false;
+        activeInstance = nullptr;
+    }
+    else
+    {
+        shouldQueueBluetoothRestart = active && bluetoothStoppedForNetwork;
+        bluetoothStoppedForNetwork = false;
+        activeInstance = active ? this : nullptr;
+        if (shouldQueueBluetoothRestart)
+        {
+            connected = false;
+            restartAdvertisingRequested = false;
+            lastAdvertisingAttemptAtMs = 0;
+            bluetoothRestartPending = true;
+            bluetoothRestartAtMs = millis() + 1200;
+        }
+    }
+    unlockState();
+
+    if (shouldStopBluetooth)
+    {
+        notifications.stop();
+        delay(300);
+    }
 }
 
 void NotificationService::ensureStarted()
@@ -357,8 +427,11 @@ void NotificationService::processStateChanged(BLENotifications::State state)
         case BLENotifications::StateDisconnected:
             connected = false;
             copyCString(statusText, sizeof(statusText), "iOS");
-            restartAdvertisingRequested = true;
-            restartAdvertisingAtMs = millis() + ADVERTISING_RESTART_DELAY_MS;
+            if (!networkBusy)
+            {
+                restartAdvertisingRequested = true;
+                restartAdvertisingAtMs = millis() + ADVERTISING_RESTART_DELAY_MS;
+            }
             break;
     }
     if (trackedNotificationCount == 0)
@@ -506,8 +579,7 @@ void NotificationService::drawScreen(Watchy &watchy)
     Watchy::display.epd2.asyncPowerOn();
     Watchy::display.fillScreen(GxEPD_WHITE);
     Watchy::display.setTextColor(GxEPD_BLACK);
-    String counterText =
-        String(localDisplayNotificationIndex) + "/" + String(localNotificationCount);
+    String counterText = String(localNotificationCount);
     drawStatusBar(watchy, counterText.c_str());
 
     constexpr int16_t contentTop = 27;
@@ -632,6 +704,7 @@ void NotificationService::drawScreen(Watchy &watchy)
     constexpr int16_t footerLeftWidth = 104;
     constexpr int16_t footerRightX = 104;
     constexpr int16_t footerRightWidth = 92;
+    constexpr int16_t footerCounterWidth = 48;
     (void)localPositiveLabel;
     OpenSansCondensed::printLine(
         Watchy::display,
@@ -641,6 +714,17 @@ void NotificationService::drawScreen(Watchy &watchy)
         footerBaseline,
         footerLeftWidth,
         false,
+        GxEPD_BLACK
+    );
+    String footerCounterText =
+        String(localDisplayNotificationIndex) + "/" + String(localNotificationCount);
+    OpenSansCondensed::printCentered(
+        Watchy::display,
+        OpenSansCondBoldCyrillic9pt,
+        footerCounterText,
+        100,
+        footerBaseline,
+        footerCounterWidth,
         GxEPD_BLACK
     );
     if ((localEventFlags & ANCS::EventFlagNegativeAction) != 0)
@@ -726,19 +810,20 @@ void NotificationService::refreshNotificationStatusBarIfNeeded(Watchy &watchy)
 
 void NotificationService::handleVibration()
 {
-    uint32_t now = millis();
-    if (vibrationActive && static_cast<int32_t>(now - vibrationStopAtMs) >= 0)
+    if (vibrationActive)
     {
         digitalWrite(VIB_MOTOR_PIN, LOW);
         vibrationActive = false;
     }
 
-    if (!vibrationActive && vibrationRequested)
+    if (vibrationRequested)
     {
         vibrationRequested = false;
         vibrationActive = true;
-        vibrationStopAtMs = now + NOTIFICATION_VIBRATION_MS;
         digitalWrite(VIB_MOTOR_PIN, HIGH);
+        delay(NOTIFICATION_VIBRATION_MS);
+        digitalWrite(VIB_MOTOR_PIN, LOW);
+        vibrationActive = false;
     }
 }
 
