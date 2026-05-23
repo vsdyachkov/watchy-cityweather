@@ -18,7 +18,7 @@
 namespace
 {
 constexpr uint32_t WEATHER_CACHE_STORAGE_MAGIC = 0x43575758;
-constexpr uint16_t WEATHER_CACHE_STORAGE_VERSION = 1;
+constexpr uint16_t WEATHER_CACHE_STORAGE_VERSION = 2;
 constexpr const char *WEATHER_CACHE_STORAGE_NAMESPACE = "cw-weather";
 constexpr const char *WEATHER_CACHE_STORAGE_KEY = "cache";
 
@@ -636,21 +636,14 @@ bool CityWeatherService::updateWifiData()
     Serial.println("Update data...");
 
     bool success = false;
-    bool locationReady = hasLocationData();
+    bool locationReady = false;
 
     if (cityWeather.connectWiFi())
     {
         Serial.println("#1. Wifi connected");
 
-        if (!locationReady)
-        {
-            Serial.print("#2. getLocationData... ");
-            locationReady = retry([&]() { return getLocationData(); }, 3);
-        }
-        else
-        {
-            Serial.println("#2. use cached location data");
-        }
+        Serial.print("#2. getLocationData... ");
+        locationReady = retry([&]() { return getLocationData(); }, 3);
 
         if (locationReady)
         {
