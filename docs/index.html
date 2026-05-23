@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CityWeather Watchy Installer</title>
+    <script
+      type="module"
+      src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"
+    ></script>
+    <style>
+      :root {
+        color-scheme: light;
+        --ink: #111418;
+        --muted: #56606b;
+        --line: #d9dee5;
+        --surface: #f5f7fa;
+        --button: #111418;
+      }
+
+      * {
+        box-sizing: border-box;
+      }
+
+      body {
+        margin: 0;
+        min-height: 100vh;
+        font-family:
+          Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont,
+          "Segoe UI", sans-serif;
+        color: var(--ink);
+        background: var(--surface);
+      }
+
+      main {
+        width: min(720px, calc(100vw - 32px));
+        margin: 0 auto;
+        padding: 56px 0;
+      }
+
+      h1 {
+        margin: 0 0 10px;
+        font-size: clamp(28px, 5vw, 44px);
+        line-height: 1.08;
+        letter-spacing: 0;
+      }
+
+      p {
+        margin: 0;
+        color: var(--muted);
+        font-size: 16px;
+        line-height: 1.5;
+      }
+
+      .panel {
+        margin-top: 28px;
+        padding: 22px;
+        border: 1px solid var(--line);
+        border-radius: 8px;
+        background: #fff;
+      }
+
+      .installer {
+        display: flex;
+        flex-wrap: wrap;
+        align-items: center;
+        gap: 14px;
+      }
+
+      esp-web-install-button {
+        --esp-tools-button-color: var(--button);
+        --esp-tools-button-text-color: #fff;
+        --esp-tools-button-border-radius: 6px;
+      }
+
+      ul {
+        margin: 18px 0 0;
+        padding-left: 20px;
+        color: var(--muted);
+        line-height: 1.55;
+      }
+
+      code {
+        padding: 2px 5px;
+        border-radius: 4px;
+        background: #edf0f4;
+        color: var(--ink);
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>CityWeather Watchy</h1>
+      <p>Firmware installer for SQFMI Watchy v2 / ESP32 devices.</p>
+
+      <section class="panel">
+        <div class="installer">
+          <esp-web-install-button manifest="./firmware/manifest.json">
+            <button slot="activate">Install firmware</button>
+            <span slot="unsupported">Use desktop Chrome or Edge with Web Serial support.</span>
+            <span slot="not-allowed">Open this page over HTTPS to install firmware.</span>
+          </esp-web-install-button>
+          <p>Version 1.5</p>
+        </div>
+
+        <ul>
+          <li>Connect Watchy over USB and choose the serial port in the browser dialog.</li>
+          <li>Do not erase device data unless you want to reset Wi-Fi and local history.</li>
+          <li>After flashing, reboot Watchy and configure Wi-Fi from the watch menu if needed.</li>
+        </ul>
+      </section>
+    </main>
+  </body>
+</html>

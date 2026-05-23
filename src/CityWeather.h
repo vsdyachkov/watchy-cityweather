@@ -2,6 +2,7 @@
 #include <Watchy.h>
 #include "CityWeatherService.h"
 #include "NotificationService.h"
+#include "Screenshot.h"
 #include "StatusBar.h"
 
 class CityWeather : public Watchy
@@ -44,6 +45,7 @@ class CityWeather : public Watchy
         void handleAboutScreenLoop();
         void recordBatteryHistory();
         String fetchLatestReleaseStatus();
+        String batteryRuntimeEstimateText();
         void drawAboutScreenContent(const String &updateStatus);
         void refreshAboutBatteryGraphIfNeeded();
         void drawBatteryHistoryGraph(int16_t x, int16_t y, int16_t w, int16_t h);
@@ -55,6 +57,9 @@ inline void CityWeather::handleButtonPress()
     {
         // Up and Down switch watch faces
         uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
+        if ((wakeupBit & MENU_BTN_MASK) && handleCityWeatherScreenshotShortcut(this)) {
+            return;
+        }
         if (wakeupBit & UP_BTN_MASK)  {
             Watchy::showWatchFace(true);
             return;

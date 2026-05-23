@@ -1,0 +1,30 @@
+{
+  "name": "CityWeather",
+  "version": "1.5",
+  "new_install_prompt_erase": true,
+  "new_install_improv_wait_time": 0,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "improv": false,
+      "parts": [
+        {
+          "path": "cityweather-watchy-1.5-bootloader.bin",
+          "offset": 4096
+        },
+        {
+          "path": "cityweather-watchy-1.5-partitions.bin",
+          "offset": 32768
+        },
+        {
+          "path": "cityweather-watchy-1.5-boot_app0.bin",
+          "offset": 57344
+        },
+        {
+          "path": "cityweather-watchy-1.5-firmware.bin",
+          "offset": 65536
+        }
+      ]
+    }
+  ]
+}

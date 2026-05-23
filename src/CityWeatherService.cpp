@@ -428,6 +428,7 @@ bool retry(F f, int maxAttempts) {
 bool CityWeatherService::getLocationData()
 {
     ensureWeatherCacheLoaded();
+
     HTTPClient http;
     http.setConnectTimeout(20000);
     http.begin(IP_WHO_URL);
@@ -600,6 +601,7 @@ bool CityWeatherService::getWeatherData()
 bool CityWeatherService::updateWifiData()
 {
     ensureWeatherCacheLoaded();
+
     tmElements_t tm;
     Watchy::RTC.read(tm);
     time_t now = makeTime(tm);

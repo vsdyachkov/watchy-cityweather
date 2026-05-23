@@ -1,4 +1,5 @@
 import os
+import re
 import subprocess
 from pathlib import Path
 
@@ -40,6 +41,18 @@ APP_VERSION_ABOUT_PATCH_MARKER = f"CityWeather app version added by {SCRIPT_PATH
 ABOUT_SCREEN_HOOK_PATCH_MARKER = f"About screen hook added by {SCRIPT_PATH}"
 ANCS_SUBTITLE_PATCH_MARKER = f"ANCS subtitle added by {SCRIPT_PATH}"
 ANCS_STOP_CLEANUP_PATCH_MARKER = f"ANCS stop cleanup added by {SCRIPT_PATH}"
+ANCS_BLUETOOTH_RESUME_PATCH_MARKER = f"ANCS Bluetooth resume added by {SCRIPT_PATH}"
+ANCS_ADVERTISING_PAYLOAD_PATCH_MARKER = (
+    f"ANCS advertising payload fixed by {SCRIPT_PATH}"
+)
+ANCS_ADVERTISED_NAME_PATCH_MARKER = f"ANCS advertised name fixed by {SCRIPT_PATH}"
+BT_STOP_GUARD_PATCH_MARKER = f"Bluetooth radio stop guard added by {SCRIPT_PATH}"
+SCREENSHOT_REQUEST_HOOK_PATCH_MARKER = (
+    f"Screenshot request hook added by {SCRIPT_PATH}"
+)
+SCREENSHOT_BUFFER_HOOK_PATCH_MARKER = (
+    f"Screenshot buffer hook added by {SCRIPT_PATH}"
+)
 
 
 def patch_watchy(*_args, **_kwargs):
@@ -66,11 +79,25 @@ def patch_watchy(*_args, **_kwargs):
     else:
         patch_display_cpp(display_cpp)
 
+    gxepd2_bw = find_lib_src_file(project_dir, pio_env, "GxEPD2", "GxEPD2_BW.h")
+    if gxepd2_bw is None:
+        print("GxEPD2 screenshot patch: GxEPD2_BW.h not found yet")
+    else:
+        patch_gxepd2_bw(gxepd2_bw)
+
 
 def find_lib_file(project_dir, pio_env, file_name):
     candidates = (
         project_dir / ".pio" / "libdeps" / pio_env / "Watchy" / "src" / file_name,
         project_dir / ".pio" / "libdeps" / "watchy" / "Watchy" / "src" / file_name,
+    )
+    return next((path for path in candidates if path.exists()), None)
+
+
+def find_lib_src_file(project_dir, pio_env, library_name, file_name):
+    candidates = (
+        project_dir / ".pio" / "libdeps" / pio_env / library_name / "src" / file_name,
+        project_dir / ".pio" / "libdeps" / "watchy" / library_name / "src" / file_name,
     )
     return next((path for path in candidates if path.exists()), None)
 
@@ -85,6 +112,7 @@ def patch_watchy_cpp(watchy_cpp):
     text = add_event_hooks(text)
     text = patch_menu_loop_hook(text)
     text = patch_menu_shown_hook(text)
+    text = patch_screenshot_request_hook(text)
     text = patch_about_screen_hook(text)
     text = patch_notifications_menu(text)
     text = patch_deep_sleep_hook(text)
@@ -102,9 +130,75 @@ def patch_watchy_cpp(watchy_cpp):
     text = patch_about_app_version(text)
     text = patch_reset_vibration(text)
     text = patch_reset_watchface_refresh(text)
+    text = restore_watchy_14_bluetooth_stop(text)
 
     if text != original_text:
         watchy_cpp.write_text(text)
+
+
+def patch_gxepd2_bw(gxepd2_bw):
+    text = gxepd2_bw.read_text()
+    original_text = text
+
+    declaration = (
+        "#include \"GxEPD2_EPD.h\"\n\n"
+        f"// {SCREENSHOT_BUFFER_HOOK_PATCH_MARKER}\n"
+        "#include <stddef.h>\n"
+        "extern \"C\" void cityWeatherScreenshotFrame(\n"
+        "    const uint8_t *buffer,\n"
+        "    size_t size,\n"
+        "    uint16_t x,\n"
+        "    uint16_t y,\n"
+        "    uint16_t w,\n"
+        "    uint16_t h,\n"
+        "    bool fullFrame\n"
+        ") __attribute__((weak));\n"
+    )
+    if SCREENSHOT_BUFFER_HOOK_PATCH_MARKER not in text:
+        text = replace_or_log(
+            text,
+            "#include \"GxEPD2_EPD.h\"\n",
+            declaration,
+            "GxEPD2 screenshot buffer declaration patch",
+        )
+
+    display_hook = (
+        "      if (cityWeatherScreenshotFrame) cityWeatherScreenshotFrame(_buffer, sizeof(_buffer), 0, 0, width(), height(), true);\n"
+        "      if (!partial_update_mode) epd2.powerOff();\n"
+    )
+    if display_hook not in text:
+        text = replace_or_log(
+            text,
+            "      if (!partial_update_mode) epd2.powerOff();\n",
+            display_hook,
+            "GxEPD2 screenshot full-frame hook patch",
+        )
+
+    window_hook = (
+        "      if (epd2.hasFastPartialUpdate)\n"
+        "      {\n"
+        "        epd2.writeImagePartAgain(_buffer, x, y_part, GxEPD2_Type::WIDTH, _page_height, x, y_part, w, h);\n"
+        "      }\n"
+        "      if (cityWeatherScreenshotFrame) cityWeatherScreenshotFrame(_buffer, sizeof(_buffer), x, y_part, w, h, false);\n"
+    )
+    if window_hook not in text:
+        original = (
+            "      if (epd2.hasFastPartialUpdate)\n"
+            "      {\n"
+            "        epd2.writeImagePartAgain(_buffer, x, y_part, GxEPD2_Type::WIDTH, _page_height, x, y_part, w, h);\n"
+            "      }\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            window_hook,
+            "GxEPD2 screenshot partial-frame hook patch",
+        )
+
+    if text != original_text:
+        gxepd2_bw.write_text(text)
+    else:
+        print("GxEPD2 screenshot buffer hook patch: already applied")
 
 
 def configure_build_version(project_dir):
@@ -181,9 +275,106 @@ def patch_ancs_library(project_dir):
         print("ANCS subtitle patch: ancs_ble_client.cpp not found")
 
     if esp32notifications_cpp.exists():
+        restore_ancs_14_bluetooth(esp32notifications_cpp)
         patch_ancs_notifications_stop(esp32notifications_cpp)
     else:
         print("ANCS stop cleanup patch: esp32notifications.cpp not found")
+
+
+def restore_watchy_14_bluetooth_stop(text):
+    pattern = (
+        rf"(?m)^(?P<indent>[ \t]*)// {re.escape(BT_STOP_GUARD_PATCH_MARKER)}\n"
+        r"  if \(!watchyNotificationsEnabled\(this\)\) \{\n"
+        r"    btStop\(\);\n"
+        r"  \}"
+    )
+    restored = re.sub(pattern, r"\g<indent>btStop();", text)
+    if restored != text:
+        print("Watchy Bluetooth radio stop guard patch: reverted")
+    return restored
+
+
+def restore_ancs_14_bluetooth(esp32notifications_cpp):
+    text = esp32notifications_cpp.read_text()
+    original_text = text
+
+    text = text.replace(
+        f"// {ANCS_BLUETOOTH_RESUME_PATCH_MARKER}\n"
+        "#include \"esp32-hal-bt.h\"\n",
+        "",
+    )
+
+    text = text.replace(
+        f"\t// {ANCS_BLUETOOTH_RESUME_PATCH_MARKER}\n"
+        "\tif (!btStarted())\n"
+        "\t{\n"
+        "\t\tbtStart();\n"
+        "\t\tdelay(80);\n"
+        "\t}\n"
+        "\tif (server != nullptr)\n"
+        "\t{\n"
+        "\t\tstartAdvertising();\n"
+        "\t\treturn true;\n"
+        "\t}\n"
+        "",
+        "",
+    )
+
+    text = text.replace(
+        f"\t// {ANCS_BLUETOOTH_RESUME_PATCH_MARKER}\n"
+        "\tif (!btStarted())\n"
+        "\t{\n"
+        "\t\tbtStart();\n"
+        "\t\tdelay(80);\n"
+        "\t}\n"
+        "\tif (server == nullptr)\n"
+        "\t{\n"
+        "\t\tbegin(localName.c_str());\n"
+        "\t\treturn;\n"
+        "\t}\n"
+        "\n",
+        "",
+    )
+
+    advertising_block_14 = (
+        "#ifdef ENABLE_IOS_SETTINGS_PAIRING_HELPER\n"
+        "\toAdvertisementData.setCompleteServices(BLEUUID((uint16_t)0x1812));\n"
+        "\toAdvertisementData.setAppearance(HID_KEYBOARD);\n"
+        "#else\n"
+        "\toAdvertisementData.setShortName(\"ANCS\");\n"
+        "#endif\n"
+    )
+
+    text = text.replace(
+        f"// {ANCS_ADVERTISING_PAYLOAD_PATCH_MARKER}\n"
+        "\toAdvertisementData.setShortName(localName);\n",
+        advertising_block_14,
+    )
+    text = text.replace(
+        "#ifdef ENABLE_IOS_SETTINGS_PAIRING_HELPER\n"
+        "\toAdvertisementData.setCompleteServices(BLEUUID((uint16_t)0x1812));\n"
+        "\toAdvertisementData.setAppearance(HID_KEYBOARD);\n"
+        "#else\n"
+        f"\t// {ANCS_ADVERTISED_NAME_PATCH_MARKER}\n"
+        "\toAdvertisementData.setShortName(localName);\n"
+        "#endif\n",
+        advertising_block_14,
+    )
+    text = text.replace(
+        "#ifdef ENABLE_IOS_SETTINGS_PAIRING_HELPER\n"
+        f"\t// {ANCS_ADVERTISING_PAYLOAD_PATCH_MARKER}\n"
+        "\tscanResponseData.setCompleteServices(BLEUUID((uint16_t)0x1812));\n"
+        "\tscanResponseData.setAppearance(HID_KEYBOARD);\n"
+        "#endif\n"
+        "",
+        "",
+    )
+
+    if text != original_text:
+        esp32notifications_cpp.write_text(text)
+        print("ANCS Bluetooth advertising restored to 1.4 behavior")
+    else:
+        print("ANCS Bluetooth advertising already matches 1.4 behavior")
 
 
 def patch_ancs_notifications_stop(esp32notifications_cpp):
@@ -683,6 +874,168 @@ def patch_menu_shown_hook(text):
         print("Watchy menu shown hook patch: already applied")
     else:
         print("Watchy menu shown hook patch: target code was not found")
+    return text
+
+
+def patch_screenshot_request_hook(text):
+    declaration = (
+        f"\n// {SCREENSHOT_REQUEST_HOOK_PATCH_MARKER}\n"
+        "bool watchyScreenshotRequested(Watchy *watchy) __attribute__((weak));\n"
+        "bool watchyScreenshotRequested(Watchy *watchy) {\n"
+        "  (void)watchy;\n"
+        "  return false;\n"
+        "}\n"
+    )
+    if SCREENSHOT_REQUEST_HOOK_PATCH_MARKER not in text:
+        anchor = (
+            f"\n// {NOTIFICATIONS_MENU_HOOK_PATCH_MARKER}\n"
+            "void watchyNotificationsSelected(Watchy *watchy) __attribute__((weak));\n"
+            "void watchyNotificationsSelected(Watchy *watchy) {\n"
+            "  (void)watchy;\n"
+            "}\n"
+        )
+        text = replace_or_log(
+            text,
+            anchor,
+            anchor + declaration,
+            "Watchy screenshot request hook declaration patch",
+        )
+
+    handle_patch = (
+        "void Watchy::handleButtonPress() {\n"
+        "  uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();\n"
+        f"  // {SCREENSHOT_REQUEST_HOOK_PATCH_MARKER}\n"
+        "  if ((wakeupBit & MENU_BTN_MASK) && watchyScreenshotRequested(this)) {\n"
+        "    return;\n"
+        "  }\n"
+    )
+    if handle_patch not in text:
+        original = (
+            "void Watchy::handleButtonPress() {\n"
+            "  uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            handle_patch,
+            "Watchy screenshot request hook wake patch",
+        )
+
+    menu_loop_patch = (
+        "      if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW) {\n"
+        "        lastTimeout = millis();\n"
+        f"        // {SCREENSHOT_REQUEST_HOOK_PATCH_MARKER}\n"
+        "        if (watchyScreenshotRequested(this)) {\n"
+        "          continue;\n"
+        "        }\n"
+    )
+    if menu_loop_patch not in text:
+        original = (
+            "      if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW) {\n"
+            "        lastTimeout = millis();\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            menu_loop_patch,
+            "Watchy screenshot request hook menu loop patch",
+        )
+
+    set_time_patch = (
+        "    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW) {\n"
+        f"      // {SCREENSHOT_REQUEST_HOOK_PATCH_MARKER}\n"
+        "      if (watchyScreenshotRequested(this)) {\n"
+        "        continue;\n"
+        "      }\n"
+        "      setIndex++;\n"
+    )
+    if set_time_patch not in text:
+        original = (
+            "    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW) {\n"
+            "      setIndex++;\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            set_time_patch,
+            "Watchy screenshot request hook set-time patch",
+        )
+
+    accelerometer_patch = (
+        "  pinMode(BACK_BTN_PIN, INPUT);\n"
+        "  pinMode(MENU_BTN_PIN, INPUT);\n"
+        "\n"
+        "  while (1) {\n"
+        "\n"
+        f"    // {SCREENSHOT_REQUEST_HOOK_PATCH_MARKER}\n"
+        "    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW && watchyScreenshotRequested(this)) {\n"
+        "      continue;\n"
+        "    }\n"
+        "\n"
+        "    unsigned long currentMillis = millis();\n"
+    )
+    if accelerometer_patch not in text:
+        original = (
+            "  pinMode(BACK_BTN_PIN, INPUT);\n"
+            "\n"
+            "  while (1) {\n"
+            "\n"
+            "    unsigned long currentMillis = millis();\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            accelerometer_patch,
+            "Watchy screenshot request hook accelerometer patch",
+        )
+
+    wifi_pin_patch = (
+        "  wifiManager.setAPCallback(_configModeCallback);\n"
+        "  pinMode(BACK_BTN_PIN, INPUT);\n"
+        "  pinMode(MENU_BTN_PIN, INPUT);\n"
+    )
+    if wifi_pin_patch not in text:
+        original = (
+            "  wifiManager.setAPCallback(_configModeCallback);\n"
+            "  pinMode(BACK_BTN_PIN, INPUT);\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            wifi_pin_patch,
+            "Watchy screenshot request hook WiFi pin patch",
+        )
+
+    wifi_loop_patch = (
+        "  while (!connected && !canceled) {\n"
+        f"    // {SCREENSHOT_REQUEST_HOOK_PATCH_MARKER}\n"
+        "    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW && watchyScreenshotRequested(this)) {\n"
+        "      continue;\n"
+        "    }\n"
+        "    if (digitalRead(BACK_BTN_PIN) == ACTIVE_LOW) {\n"
+    )
+    if wifi_loop_patch not in text:
+        original = (
+            "  while (!connected && !canceled) {\n"
+            "    if (digitalRead(BACK_BTN_PIN) == ACTIVE_LOW) {\n"
+        )
+        text = replace_or_log(
+            text,
+            original,
+            wifi_loop_patch,
+            "Watchy screenshot request hook WiFi loop patch",
+        )
+
+    if (
+        SCREENSHOT_REQUEST_HOOK_PATCH_MARKER in text and
+        handle_patch in text and
+        menu_loop_patch in text and
+        set_time_patch in text and
+        accelerometer_patch in text and
+        wifi_pin_patch in text and
+        wifi_loop_patch in text
+    ):
+        print("Watchy screenshot request hook patch: already applied")
     return text
 
 

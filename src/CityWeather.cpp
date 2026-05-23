@@ -11,6 +11,7 @@
 #include <WiFiClientSecure.h>
 #include "CityWeather.h"
 #include "CityWeatherService.h"
+#include "Screenshot.h"
 #include "StatusBar.h"
 
 #ifndef CITYWEATHER_CLEAN_VERSION
@@ -868,6 +869,11 @@ void CityWeather::refreshCachedReleaseStatusIfDue()
 void CityWeather::handleAboutScreenLoop()
 {
   showAppTick();
+  if (handleCityWeatherScreenshotShortcut(this))
+  {
+    lastAboutButtonActionAtMs = millis();
+    return;
+  }
 
 #ifdef ARDUINO_ESP32S3_DEV
   const bool backPressed = digitalRead(BACK_BTN_PIN) == LOW;
@@ -905,6 +911,106 @@ void CityWeather::handleAboutScreenLoop()
   }
 }
 
+String CityWeather::batteryRuntimeEstimateText()
+{
+  ensureBatteryHistoryLoaded();
+
+  uint8_t currentPercent = statusBarBatteryPercentFromVoltage(getBatteryVoltage());
+  if (currentPercent == 0)
+  {
+    return "Left: <1h";
+  }
+
+  if (
+      batteryHistoryCount < 2 ||
+      lastBatterySampleHour == INVALID_BATTERY_SAMPLE_HOUR
+  )
+  {
+    return "Left: estimating";
+  }
+
+  uint32_t latestSample = lastBatterySampleHour;
+  uint32_t startSample =
+      latestSample >= BATTERY_GRAPH_SAMPLES ? latestSample - BATTERY_GRAPH_SAMPLES : 0;
+  bool hasPreviousSample = false;
+  uint32_t previousSampleSlot = 0;
+  uint8_t previousPercent = 0;
+  uint32_t firstWindowSample = 0;
+  uint32_t lastWindowSample = 0;
+  uint16_t dischargeDropPercent = 0;
+
+  for (uint8_t logicalIndex = 0; logicalIndex < batteryHistoryCount; logicalIndex++)
+  {
+    uint8_t sampleIndex = batteryHistoryIndex(logicalIndex);
+    uint32_t sampleSlot = batteryHistoryHours[sampleIndex];
+    uint8_t samplePercent = batteryHistoryPercents[sampleIndex];
+    if (
+        sampleSlot == 0 ||
+        sampleSlot == INVALID_BATTERY_SAMPLE_HOUR ||
+        sampleSlot < startSample ||
+        sampleSlot > latestSample
+    )
+    {
+      continue;
+    }
+
+    if (!hasPreviousSample)
+    {
+      firstWindowSample = sampleSlot;
+      lastWindowSample = sampleSlot;
+      previousSampleSlot = sampleSlot;
+      previousPercent = samplePercent;
+      hasPreviousSample = true;
+      continue;
+    }
+
+    if (sampleSlot <= previousSampleSlot)
+    {
+      continue;
+    }
+
+    if (samplePercent < previousPercent)
+    {
+      dischargeDropPercent += previousPercent - samplePercent;
+    }
+    previousSampleSlot = sampleSlot;
+    previousPercent = samplePercent;
+    lastWindowSample = sampleSlot;
+  }
+
+  if (!hasPreviousSample || lastWindowSample <= firstWindowSample || dischargeDropPercent == 0)
+  {
+    return "Left: estimating";
+  }
+
+  uint32_t observedSeconds =
+      (lastWindowSample - firstWindowSample) * BATTERY_SAMPLE_INTERVAL_SECONDS;
+  if (observedSeconds < 12UL * SECS_PER_HOUR)
+  {
+    return "Left: estimating";
+  }
+
+  uint64_t remainingSeconds =
+      (static_cast<uint64_t>(currentPercent) * observedSeconds) / dischargeDropPercent;
+  uint32_t remainingHours = static_cast<uint32_t>((remainingSeconds + 1800ULL) / SECS_PER_HOUR);
+  if (remainingHours == 0)
+  {
+    return "Left: <1h";
+  }
+
+  uint32_t days = remainingHours / 24;
+  uint32_t hours = remainingHours % 24;
+  if (days > 99)
+  {
+    return "Left: >99d";
+  }
+  if (days > 0)
+  {
+    return "Left: ~" + String(days) + "d " + String(hours) + "h";
+  }
+  return "Left: ~" + String(hours) + "h";
+}
+
 void CityWeather::drawAboutScreenContent(const String &updateStatus)
 {
   display.setFullWindow();
@@ -916,8 +1022,8 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
   constexpr int16_t lineStep = 20;
   constexpr int16_t appLineY = 14;
   constexpr int16_t updateLineY = appLineY + lineStep;
-  constexpr int16_t graphTitleY = updateLineY + lineStep * 2;
-  constexpr int16_t graphTitleGap = 8;
+  constexpr int16_t batteryRuntimeLineY = updateLineY + lineStep;
+  constexpr int16_t graphTitleY = batteryRuntimeLineY + lineStep;
 
   printFitLine(
       display,
@@ -927,6 +1033,7 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
       200
   );
   printFitLine(display, updateStatus, 0, updateLineY, 200);
+  printFitLine(display, batteryRuntimeEstimateText(), 0, batteryRuntimeLineY, 200);
 
   printFitLine(display, "Battery Usage 24H", 0, graphTitleY, 200);
   drawBatteryHistoryGraph(
@@ -1234,7 +1341,7 @@ void CityWeather::drawCalendar(bool showWeather)
 void CityWeather::drawWatchFace()
 {
   Watchy::RTC.read(currentTime);
-  if (cityWeatherService.updateWifiData())
+  if (!isNotificationsActive() && cityWeatherService.updateWifiData())
   {
     Watchy::RTC.read(currentTime);
   }
@@ -1327,6 +1434,11 @@ bool watchyShouldDeepSleep(Watchy *watchy)
 {
   CityWeather *cityWeather = static_cast<CityWeather *>(watchy);
   return !cityWeather->isNotificationsActive() && !cityWeather->isAboutScreenActive();
+}
+
+bool watchyScreenshotRequested(Watchy *watchy)
+{
+  return handleCityWeatherScreenshotShortcut(watchy);
 }
 
 bool watchyNotificationsEnabled(Watchy *watchy)

@@ -3,11 +3,13 @@
 #include <cstring>
 
 #include "StatusBar.h"
+#include "Screenshot.h"
 
 NotificationService *NotificationService::activeInstance = nullptr;
 constexpr char NotificationService::DEVICE_NAME[];
 
 void watchyAppTick(Watchy *watchy);
+bool watchyScreenshotRequested(Watchy *watchy);
 
 namespace
 {
@@ -868,6 +870,13 @@ void NotificationService::handleButtons(Watchy &watchy)
     lockState();
     bool hasNotifications = trackedNotificationCount > 0;
     unlockState();
+
+    if ((pressedButtons & MENU_BUTTON) != 0 && watchyScreenshotRequested(&watchy))
+    {
+        lastButtonActionAtMs = now;
+        previousButtonMask = readButtonMask();
+        return;
+    }
 
     if (menuVisible)
     {
