@@ -2,7 +2,7 @@
 
 CityWeather is a compact weather-focused watch face for [SQFMI Watchy](https://watchy.sqfmi.com): current time, location-based weekly forecast, iOS push notifications, battery history, and a clean settings menu.
 
-![CityWeather watch face](./screenshot1.png) ![CityWeather notifications](./screenshot2.png) ![CityWeather menu](./screenshot3.png) ![CityWeather about screen](./screenshot4.png)
+![CityWeather watch face](./screenshot.png) ![CityWeather notifications](./screenshot2.png) ![CityWeather menu](./screenshot3.png) ![CityWeather about screen](./screenshot4.png)
 
 ## Features
 
