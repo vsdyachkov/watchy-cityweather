@@ -1317,8 +1317,9 @@ void CityWeather::drawCalendar(bool showWeather)
         // tMax & tMin
         String tMax = currentWeek[i].tempMax > 0 ? "+" + (String)currentWeek[i].tempMax : (String)currentWeek[i].tempMax;
         String tMin = currentWeek[i].tempMin > 0 ? "+" + (String)currentWeek[i].tempMin : (String)currentWeek[i].tempMin;
-        OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMax, (i*28) + 14, 178, 28, GxEPD_BLACK, GxEPD_WHITE);
-        OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMin, (i*28) + 14, 196, 28, GxEPD_BLACK, GxEPD_WHITE);
+        int tempCenterX = (i * 28) + 14 + (i == 6 ? 1 : 0);
+        OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMax, tempCenterX, 178, 28, GxEPD_BLACK, GxEPD_WHITE);
+        OpenSansCondensed::printCenteredOutlined(display, OpenSansCondBoldCyrillic9pt, tMin, tempCenterX, 196, 28, GxEPD_BLACK, GxEPD_WHITE);
       }
     }
     
