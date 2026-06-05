@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "BatteryMonitor.h"
 #include "Images.h"
 #include "OpenSansCondBoldCyrillic9pt.h"
 
@@ -380,11 +381,6 @@ void drawDitheredHorizontalLine(
 }
 }
 
-uint8_t statusBarBatteryPercentFromVoltage(float voltage)
-{
-    return constrain(static_cast<int>((voltage - 3.0f) * 83.33f), 0, 100);
-}
-
 void restoreCityWeatherWiFiState()
 {
     if (wifiStateLoadedMagic != WIFI_STATE_STORAGE_MAGIC)
@@ -523,7 +519,7 @@ void drawCityWeatherStatusBar(
     int16_t timeRight = timeX1 + static_cast<int16_t>(timeWidth);
 
     Watchy::display.setFont(&FreeMonoBold9pt7b);
-    uint8_t batteryPercent = statusBarBatteryPercentFromVoltage(watchy.getBatteryVoltage());
+    uint8_t batteryPercent = cityWeatherBatteryPercent(watchy);
     String batteryText = String(batteryPercent) + "%";
     int16_t batterySlotLeft =
         textStartForRightAligned(Watchy::display, STATUS_BAR_BATTERY_RIGHT, "100%");

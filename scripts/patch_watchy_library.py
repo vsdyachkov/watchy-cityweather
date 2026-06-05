@@ -276,6 +276,7 @@ def patch_ancs_library(project_dir):
 
     if esp32notifications_cpp.exists():
         restore_ancs_14_bluetooth(esp32notifications_cpp)
+        patch_ancs_advertisement_data_string(esp32notifications_cpp)
         patch_ancs_notifications_stop(esp32notifications_cpp)
     else:
         print("ANCS stop cleanup patch: esp32notifications.cpp not found")
@@ -454,6 +455,33 @@ def patch_ancs_notifications_stop(esp32notifications_cpp):
         esp32notifications_cpp.write_text(text)
 
 
+def patch_ancs_advertisement_data_string(esp32notifications_cpp):
+    text = esp32notifications_cpp.read_text()
+    original_text = text
+    replacements = (
+        (
+            "\t\tadvertisementData.addData(String(cdata, 2) + String((char *)&uuid.getNative()->uuid.uuid16, 2));\n",
+            "\t\tstd::string payload(cdata, 2);\n"
+            "\t\tpayload.append((char *)&uuid.getNative()->uuid.uuid16, 2);\n"
+            "\t\tadvertisementData.addData(payload);\n",
+        ),
+        (
+            "\t\tadvertisementData.addData(String(cdata, 2) + String((char *)uuid.getNative()->uuid.uuid128, 16));\n",
+            "\t\tstd::string payload(cdata, 2);\n"
+            "\t\tpayload.append((char *)uuid.getNative()->uuid.uuid128, 16);\n"
+            "\t\tadvertisementData.addData(payload);\n",
+        ),
+    )
+
+    for original, patched in replacements:
+        if patched in text:
+            continue
+        text = replace_or_log(text, original, patched, "ANCS advertisement data string patch")
+
+    if text != original_text:
+        esp32notifications_cpp.write_text(text)
+
+
 def patch_ancs_notification_header(ble_notification_h):
     text = ble_notification_h.read_text()
     original_text = text
@@ -507,6 +535,50 @@ def patch_ancs_notification_header(ble_notification_h):
         if patched in text:
             continue
         text = replace_or_log(text, original, patched, "ANCS subtitle header patch")
+
+    extra_replacements = (
+        (
+            "    std::string message;\n"
+            "    std::string type;\n",
+            "    std::string message;\n"
+            "    std::string positiveActionLabel;\n"
+            "    std::string negativeActionLabel;\n"
+            "    std::string type;\n",
+            "std::string positiveActionLabel",
+        ),
+        (
+            "    uint32_t uuid = 0;\n"
+            "    bool showed = false;\n",
+            "    uint32_t uuid = 0;\n"
+            "    bool titleReceived = false;\n"
+            "    bool messageReceived = false;\n"
+            "    bool showed = false;\n",
+            "bool titleReceived",
+        ),
+        (
+            "    String message;\n"
+            "    String type;\n",
+            "    String message;\n"
+            "    String positiveActionLabel;\n"
+            "    String negativeActionLabel;\n"
+            "    String type;\n",
+            "String positiveActionLabel",
+        ),
+        (
+            "        message = String(src.message.c_str());\n"
+            "        type = String(src.type.c_str());\n",
+            "        message = String(src.message.c_str());\n"
+            "        positiveActionLabel = String(src.positiveActionLabel.c_str());\n"
+            "        negativeActionLabel = String(src.negativeActionLabel.c_str());\n"
+            "        type = String(src.type.c_str());\n",
+            "positiveActionLabel = String",
+        ),
+    )
+
+    for original, patched, marker in extra_replacements:
+        if marker in text:
+            continue
+        text = replace_or_log(text, original, patched, "ANCS action labels header patch")
 
     if text != original_text:
         ble_notification_h.write_text(text)
@@ -664,6 +736,103 @@ def patch_ancs_ble_client(ancs_ble_client_cpp):
         "\tconst uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};\n"
         "\tpControlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);\n",
     )
+    if "vPositiveActionLabel" not in text:
+        text = replace_or_log(
+            text,
+            "\tconst uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};\n"
+            "\tpControlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);\n",
+            "\tconst uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};\n"
+            "\tpControlPointCharacteristic->writeValue((uint8_t *)vMessage, 8, true);\n"
+            "\tconst uint8_t vPositiveActionLabel[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDPositiveActionLabel, 0x0, 0x10};\n"
+            "\tpControlPointCharacteristic->writeValue((uint8_t *)vPositiveActionLabel, 8, true);\n"
+            "\tconst uint8_t vNegativeActionLabel[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDNegativeActionLabel, 0x0, 0x10};\n"
+            "\tpControlPointCharacteristic->writeValue((uint8_t *)vNegativeActionLabel, 8, true);\n",
+            "ANCS action labels client patch",
+        )
+
+    if "bool visibleDataChanged = false;" not in text:
+        text = replace_or_log(
+            text,
+            "\tNotification *notification = notificationQueue->getNotification(messageId);\n"
+            "\n"
+            "\tswitch (pData[5])\n",
+            "\tNotification *notification = notificationQueue->getNotification(messageId);\n"
+            "\tbool visibleDataChanged = false;\n"
+            "\n"
+            "\tswitch (pData[5])\n",
+            "ANCS visible data patch",
+        )
+
+    client_replacements = (
+        (
+            "\tcase ANCS::NotificationAttributeIDAppIdentifier:\n"
+            "\t\tnotification->type = message;\n",
+            "\tcase ANCS::NotificationAttributeIDAppIdentifier:\n"
+            "\t\tvisibleDataChanged = notification->type != message;\n"
+            "\t\tnotification->type = message;\n",
+            "visibleDataChanged = notification->type",
+        ),
+        (
+            "\tcase 0x1:\n"
+            "\t\tnotification->title = message;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got title: %s\", message.c_str());\n"
+            "\t\tbreak;\n"
+            "\tcase 0x3:\n"
+            "\t\tnotification->message = message;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got message: %s\", message.c_str());\n"
+            "\t\tbreak;\n",
+            "\tcase ANCS::NotificationAttributeIDTitle:\n"
+            "\t\tvisibleDataChanged = notification->title != message;\n"
+            "\t\tnotification->title = message;\n"
+            "\t\tnotification->titleReceived = true;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got title: %s\", message.c_str());\n"
+            "\t\tbreak;\n"
+            "\tcase ANCS::NotificationAttributeIDSubtitle:\n"
+            "\t\tvisibleDataChanged = notification->subtitle != message;\n"
+            "\t\tnotification->subtitle = message;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got subtitle: %s\", message.c_str());\n"
+            "\t\tbreak;\n"
+            "\tcase ANCS::NotificationAttributeIDMessage:\n"
+            "\t\tvisibleDataChanged = notification->message != message;\n"
+            "\t\tnotification->message = message;\n"
+            "\t\tnotification->messageReceived = true;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got message: %s\", message.c_str());\n"
+            "\t\tbreak;\n"
+            "\tcase ANCS::NotificationAttributeIDPositiveActionLabel:\n"
+            "\t\tvisibleDataChanged = notification->positiveActionLabel != message;\n"
+            "\t\tnotification->positiveActionLabel = message;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got positive action: %s\", message.c_str());\n"
+            "\t\tbreak;\n"
+            "\tcase ANCS::NotificationAttributeIDNegativeActionLabel:\n"
+            "\t\tvisibleDataChanged = notification->negativeActionLabel != message;\n"
+            "\t\tnotification->negativeActionLabel = message;\n"
+            "\t\tESP_LOGD(LOG_TAG, \"got negative action: %s\", message.c_str());\n"
+            "\t\tbreak;\n",
+            "notification->positiveActionLabel = message",
+        ),
+        (
+            "\tif (!notification->title.empty() && !notification->message.empty())\n"
+            "\t{\n"
+            "\t\tif (notificationCB && notification->isComplete == false)\n",
+            "\tbool hasVisibleData =\n"
+            "\t\t\t!notification->title.empty() ||\n"
+            "\t\t\t!notification->subtitle.empty() ||\n"
+            "\t\t\t!notification->message.empty();\n"
+            "\tbool hasFetchedVisibleData =\n"
+            "\t\t\tnotification->titleReceived ||\n"
+            "\t\t\tnotification->messageReceived ||\n"
+            "\t\t\t!notification->subtitle.empty();\n"
+            "\tif (hasVisibleData && hasFetchedVisibleData)\n"
+            "\t{\n"
+            "\t\tif (notificationCB && (!notification->isComplete || visibleDataChanged))\n",
+            "hasVisibleData",
+        ),
+    )
+
+    for original, patched, marker in client_replacements:
+        if marker in text:
+            continue
+        text = replace_or_log(text, original, patched, "ANCS action labels client patch")
 
     if text != original_text:
         ancs_ble_client_cpp.write_text(text)

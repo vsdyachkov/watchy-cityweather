@@ -9,6 +9,7 @@
 #include <Preferences.h>
 #include <HTTPClient.h>
 #include <WiFiClientSecure.h>
+#include "BatteryMonitor.h"
 #include "CityWeather.h"
 #include "CityWeatherService.h"
 #include "Screenshot.h"
@@ -88,13 +89,17 @@ const uint8_t WEATHER_ICON_HEIGHT = 25;
 
 namespace
 {
-constexpr uint8_t BATTERY_HISTORY_CAPACITY = 168;
+constexpr uint8_t BATTERY_HISTORY_CAPACITY = 30;
+constexpr uint8_t BATTERY_HISTORY_LEGACY_CAPACITY = 168;
 constexpr uint8_t BATTERY_GRAPH_HOURS = 24;
-constexpr uint32_t BATTERY_SAMPLE_INTERVAL_SECONDS = 30UL * SECS_PER_MIN;
+constexpr uint32_t BATTERY_SAMPLE_INTERVAL_SECONDS = SECS_PER_HOUR;
 constexpr uint8_t BATTERY_GRAPH_SAMPLES =
     (BATTERY_GRAPH_HOURS * SECS_PER_HOUR) / BATTERY_SAMPLE_INTERVAL_SECONDS;
-constexpr uint8_t BATTERY_LEGACY_HOURLY_TO_SAMPLE_MULTIPLIER =
-    SECS_PER_HOUR / BATTERY_SAMPLE_INTERVAL_SECONDS;
+constexpr uint8_t BATTERY_GRAPH_MAJOR_TICK_SAMPLES =
+    (6UL * SECS_PER_HOUR) / BATTERY_SAMPLE_INTERVAL_SECONDS;
+constexpr uint8_t BATTERY_GRAPH_MINOR_TICK_SAMPLES =
+    (3UL * SECS_PER_HOUR) / BATTERY_SAMPLE_INTERVAL_SECONDS;
+constexpr uint8_t BATTERY_LEGACY_HALF_HOURLY_TO_SAMPLE_DIVISOR = 2;
 constexpr int16_t ABOUT_BATTERY_GRAPH_X = 0;
 constexpr int16_t ABOUT_BATTERY_GRAPH_Y = 82;
 constexpr int16_t ABOUT_BATTERY_GRAPH_W = 200;
@@ -103,7 +108,10 @@ constexpr uint32_t ABOUT_UPDATE_CHECK_INTERVAL_SECONDS = SECS_PER_DAY;
 constexpr uint32_t INVALID_BATTERY_SAMPLE_HOUR = 0xFFFFFFFF;
 constexpr uint32_t BATTERY_HISTORY_STORAGE_MAGIC = 0x43574248;
 constexpr uint16_t BATTERY_HISTORY_STORAGE_VERSION_HOURLY = 1;
-constexpr uint16_t BATTERY_HISTORY_STORAGE_VERSION = 2;
+constexpr uint16_t BATTERY_HISTORY_STORAGE_VERSION_HALF_HOURLY = 2;
+constexpr uint16_t BATTERY_HISTORY_STORAGE_VERSION = 3;
+constexpr uint32_t BATTERY_HISTORY_LOADED_MAGIC =
+    BATTERY_HISTORY_STORAGE_MAGIC ^ BATTERY_HISTORY_STORAGE_VERSION;
 constexpr const char *BATTERY_HISTORY_STORAGE_NAMESPACE = "cw-battery";
 constexpr const char *BATTERY_HISTORY_STORAGE_KEY = "history";
 constexpr const char *BATTERY_HISTORY_STORAGE_BACKUP_KEY = "history-bak";
@@ -122,6 +130,20 @@ struct BatteryHistorySnapshot
   uint32_t lastSampleHour;
   uint32_t hours[BATTERY_HISTORY_CAPACITY];
   uint8_t percents[BATTERY_HISTORY_CAPACITY];
+  uint32_t checksum;
+};
+
+struct BatteryHistoryLegacySnapshot
+{
+  uint32_t magic;
+  uint16_t version;
+  uint8_t capacity;
+  uint8_t count;
+  uint8_t start;
+  uint8_t reserved[3];
+  uint32_t lastSampleHour;
+  uint32_t hours[BATTERY_HISTORY_LEGACY_CAPACITY];
+  uint8_t percents[BATTERY_HISTORY_LEGACY_CAPACITY];
   uint32_t checksum;
 };
 
@@ -265,11 +287,12 @@ uint32_t checksumBytes(const uint8_t *bytes, size_t length)
   return checksum;
 }
 
-uint32_t batteryHistorySnapshotChecksum(const BatteryHistorySnapshot &snapshot)
+template <typename Snapshot>
+uint32_t batteryHistorySnapshotChecksum(const Snapshot &snapshot)
 {
   return checksumBytes(
       reinterpret_cast<const uint8_t *>(&snapshot),
-      offsetof(BatteryHistorySnapshot, checksum)
+      offsetof(Snapshot, checksum)
   );
 }
 
@@ -315,10 +338,7 @@ bool restoreBatteryHistorySnapshot(const BatteryHistorySnapshot &snapshot)
 {
   if (
       snapshot.magic != BATTERY_HISTORY_STORAGE_MAGIC ||
-      (
-          snapshot.version != BATTERY_HISTORY_STORAGE_VERSION &&
-          snapshot.version != BATTERY_HISTORY_STORAGE_VERSION_HOURLY
-      ) ||
+      snapshot.version != BATTERY_HISTORY_STORAGE_VERSION ||
       snapshot.capacity != BATTERY_HISTORY_CAPACITY ||
       snapshot.count > BATTERY_HISTORY_CAPACITY ||
       snapshot.start >= BATTERY_HISTORY_CAPACITY ||
@@ -335,9 +355,59 @@ bool restoreBatteryHistorySnapshot(const BatteryHistorySnapshot &snapshot)
     uint8_t sampleIndex = (snapshot.start + logicalIndex) % BATTERY_HISTORY_CAPACITY;
     uint32_t hour = snapshot.hours[sampleIndex];
     uint8_t percent = snapshot.percents[sampleIndex];
-    if (snapshot.version == BATTERY_HISTORY_STORAGE_VERSION_HOURLY)
+    if (hour == 0 || hour == INVALID_BATTERY_SAMPLE_HOUR || percent > 100)
     {
-      hour *= BATTERY_LEGACY_HOURLY_TO_SAMPLE_MULTIPLIER;
+      continue;
+    }
+    if (batteryHistoryCount > 0 && hour < previousHour)
+    {
+      continue;
+    }
+    if (batteryHistoryCount > 0 && hour == previousHour)
+    {
+      uint8_t lastIndex = batteryHistoryIndex(batteryHistoryCount - 1);
+      batteryHistoryPercents[lastIndex] = percent;
+      continue;
+    }
+
+    appendBatteryHistorySample(hour, percent);
+    previousHour = hour;
+  }
+
+  if (batteryHistoryCount == 0)
+  {
+    return snapshot.count == 0;
+  }
+  return batteryHistoryInMemoryLooksValid();
+}
+
+bool restoreBatteryHistoryLegacySnapshot(const BatteryHistoryLegacySnapshot &snapshot)
+{
+  if (
+      snapshot.magic != BATTERY_HISTORY_STORAGE_MAGIC ||
+      (
+          snapshot.version != BATTERY_HISTORY_STORAGE_VERSION_HOURLY &&
+          snapshot.version != BATTERY_HISTORY_STORAGE_VERSION_HALF_HOURLY
+      ) ||
+      snapshot.capacity != BATTERY_HISTORY_LEGACY_CAPACITY ||
+      snapshot.count > BATTERY_HISTORY_LEGACY_CAPACITY ||
+      snapshot.start >= BATTERY_HISTORY_LEGACY_CAPACITY ||
+      snapshot.checksum != batteryHistorySnapshotChecksum(snapshot)
+  )
+  {
+    return false;
+  }
+
+  resetBatteryHistory();
+  uint32_t previousHour = 0;
+  for (uint8_t logicalIndex = 0; logicalIndex < snapshot.count; logicalIndex++)
+  {
+    uint8_t sampleIndex = (snapshot.start + logicalIndex) % BATTERY_HISTORY_LEGACY_CAPACITY;
+    uint32_t hour = snapshot.hours[sampleIndex];
+    uint8_t percent = snapshot.percents[sampleIndex];
+    if (snapshot.version == BATTERY_HISTORY_STORAGE_VERSION_HALF_HOURLY)
+    {
+      hour /= BATTERY_LEGACY_HALF_HOURLY_TO_SAMPLE_DIVISOR;
     }
     if (hour == 0 || hour == INVALID_BATTERY_SAMPLE_HOUR || percent > 100)
     {
@@ -391,18 +461,29 @@ void saveBatteryHistoryToStorage()
 bool loadBatteryHistoryFromStorageKey(Preferences &preferences, const char *key)
 {
   size_t storedLength = preferences.getBytesLength(key);
-  if (storedLength != sizeof(BatteryHistorySnapshot))
+  if (storedLength == sizeof(BatteryHistorySnapshot))
   {
-    return false;
+    BatteryHistorySnapshot snapshot = {};
+    size_t readLength = preferences.getBytes(key, &snapshot, sizeof(snapshot));
+    if (readLength != sizeof(snapshot))
+    {
+      return false;
+    }
+    return restoreBatteryHistorySnapshot(snapshot);
   }
 
-  BatteryHistorySnapshot snapshot = {};
-  size_t readLength = preferences.getBytes(key, &snapshot, sizeof(snapshot));
-  if (readLength != sizeof(snapshot))
+  if (storedLength == sizeof(BatteryHistoryLegacySnapshot))
   {
-    return false;
+    BatteryHistoryLegacySnapshot snapshot = {};
+    size_t readLength = preferences.getBytes(key, &snapshot, sizeof(snapshot));
+    if (readLength != sizeof(snapshot))
+    {
+      return false;
+    }
+    return restoreBatteryHistoryLegacySnapshot(snapshot);
   }
-  return restoreBatteryHistorySnapshot(snapshot);
+
+  return false;
 }
 
 bool loadBatteryHistoryFromStorage()
@@ -427,7 +508,7 @@ bool loadBatteryHistoryFromStorage()
 void ensureBatteryHistoryLoaded()
 {
   if (
-      batteryHistoryLoadedMagic == BATTERY_HISTORY_STORAGE_MAGIC &&
+      batteryHistoryLoadedMagic == BATTERY_HISTORY_LOADED_MAGIC &&
       batteryHistoryInMemoryLooksValid()
   )
   {
@@ -436,19 +517,19 @@ void ensureBatteryHistoryLoaded()
 
   if (loadBatteryHistoryFromStorage())
   {
-    batteryHistoryLoadedMagic = BATTERY_HISTORY_STORAGE_MAGIC;
+    batteryHistoryLoadedMagic = BATTERY_HISTORY_LOADED_MAGIC;
     return;
   }
 
   if (batteryHistoryInMemoryLooksValid() && batteryHistoryCount > 0)
   {
-    batteryHistoryLoadedMagic = BATTERY_HISTORY_STORAGE_MAGIC;
+    batteryHistoryLoadedMagic = BATTERY_HISTORY_LOADED_MAGIC;
     saveBatteryHistoryToStorage();
     return;
   }
 
   resetBatteryHistory();
-  batteryHistoryLoadedMagic = BATTERY_HISTORY_STORAGE_MAGIC;
+  batteryHistoryLoadedMagic = BATTERY_HISTORY_LOADED_MAGIC;
 }
 
 void appendBatteryHistorySample(uint32_t hour, uint8_t percent)
@@ -726,7 +807,6 @@ void CityWeather::drawTime()
 
 void CityWeather::drawStatusBar()
 {
-  recordBatteryHistory();
   drawCityWeatherStatusBar(*this, isNotificationsActive());
 }
 
@@ -734,6 +814,11 @@ void CityWeather::recordBatteryHistory()
 {
   ensureBatteryHistoryLoaded();
   Watchy::RTC.read(currentTime);
+  if (!timeElementsLookValid(currentTime))
+  {
+    return;
+  }
+
   time_t currentTimestamp = makeTime(currentTime);
   if (currentTimestamp <= 0)
   {
@@ -742,22 +827,16 @@ void CityWeather::recordBatteryHistory()
 
   uint32_t currentSample =
       static_cast<uint32_t>(currentTimestamp / BATTERY_SAMPLE_INTERVAL_SECONDS);
-  uint8_t batteryPercent = statusBarBatteryPercentFromVoltage(getBatteryVoltage());
   if (
       lastBatterySampleHour != INVALID_BATTERY_SAMPLE_HOUR &&
       currentSample <= lastBatterySampleHour &&
       batteryHistoryCount > 0
   )
   {
-    uint8_t lastIndex = batteryHistoryIndex(batteryHistoryCount - 1);
-    if (batteryHistoryPercents[lastIndex] != batteryPercent)
-    {
-      batteryHistoryPercents[lastIndex] = batteryPercent;
-      saveBatteryHistoryToStorage();
-    }
     return;
   }
 
+  uint8_t batteryPercent = readCityWeatherBattery(*this).percent;
   appendBatteryHistorySample(currentSample, batteryPercent);
   saveBatteryHistoryToStorage();
 }
@@ -915,7 +994,7 @@ String CityWeather::batteryRuntimeEstimateText()
 {
   ensureBatteryHistoryLoaded();
 
-  uint8_t currentPercent = statusBarBatteryPercentFromVoltage(getBatteryVoltage());
+  uint8_t currentPercent = cityWeatherBatteryPercent(*this);
   if (currentPercent == 0)
   {
     return "Left: <1h";
@@ -935,8 +1014,7 @@ String CityWeather::batteryRuntimeEstimateText()
   bool hasPreviousSample = false;
   uint32_t previousSampleSlot = 0;
   uint8_t previousPercent = 0;
-  uint32_t firstWindowSample = 0;
-  uint32_t lastWindowSample = 0;
+  uint32_t observedDischargeSamples = 0;
   uint16_t dischargeDropPercent = 0;
 
   for (uint8_t logicalIndex = 0; logicalIndex < batteryHistoryCount; logicalIndex++)
@@ -956,8 +1034,6 @@ String CityWeather::batteryRuntimeEstimateText()
 
     if (!hasPreviousSample)
     {
-      firstWindowSample = sampleSlot;
-      lastWindowSample = sampleSlot;
       previousSampleSlot = sampleSlot;
       previousPercent = samplePercent;
       hasPreviousSample = true;
@@ -972,19 +1048,19 @@ String CityWeather::batteryRuntimeEstimateText()
     if (samplePercent < previousPercent)
     {
       dischargeDropPercent += previousPercent - samplePercent;
+      observedDischargeSamples += sampleSlot - previousSampleSlot;
     }
     previousSampleSlot = sampleSlot;
     previousPercent = samplePercent;
-    lastWindowSample = sampleSlot;
   }
 
-  if (!hasPreviousSample || lastWindowSample <= firstWindowSample || dischargeDropPercent == 0)
+  if (!hasPreviousSample || observedDischargeSamples == 0 || dischargeDropPercent == 0)
   {
     return "Left: estimating";
   }
 
   uint32_t observedSeconds =
-      (lastWindowSample - firstWindowSample) * BATTERY_SAMPLE_INTERVAL_SECONDS;
+      observedDischargeSamples * BATTERY_SAMPLE_INTERVAL_SECONDS;
   if (observedSeconds < 12UL * SECS_PER_HOUR)
   {
     return "Left: estimating";
@@ -1035,7 +1111,7 @@ void CityWeather::drawAboutScreenContent(const String &updateStatus)
   printFitLine(display, updateStatus, 0, updateLineY, 200);
   printFitLine(display, batteryRuntimeEstimateText(), 0, batteryRuntimeLineY, 200);
 
-  printFitLine(display, "Battery Usage 24H", 0, graphTitleY, 200);
+  printFitLine(display, "Battery 24H", 0, graphTitleY, 200);
   drawBatteryHistoryGraph(
       ABOUT_BATTERY_GRAPH_X,
       ABOUT_BATTERY_GRAPH_Y,
@@ -1048,6 +1124,11 @@ void CityWeather::refreshAboutBatteryGraphIfNeeded()
 {
   ensureBatteryHistoryLoaded();
   Watchy::RTC.read(currentTime);
+  if (!timeElementsLookValid(currentTime))
+  {
+    return;
+  }
+
   time_t currentTimestamp = makeTime(currentTime);
   if (currentTimestamp <= 0)
   {
@@ -1089,6 +1170,11 @@ void CityWeather::drawBatteryHistoryGraph(int16_t x, int16_t y, int16_t w, int16
 {
   ensureBatteryHistoryLoaded();
   Watchy::RTC.read(currentTime);
+  if (!timeElementsLookValid(currentTime))
+  {
+    return;
+  }
+
   time_t currentTimestamp = makeTime(currentTime);
   if (currentTimestamp <= 0)
   {
@@ -1176,7 +1262,7 @@ void CityWeather::drawBatteryHistoryGraph(int16_t x, int16_t y, int16_t w, int16
   {
     int16_t tickX =
         plotLeft + static_cast<int16_t>((tickSample * static_cast<uint32_t>(plotWidth)) / graphSamples);
-    if (tickSample % 12 == 0 || tickSample == graphSamples)
+    if (tickSample % BATTERY_GRAPH_MAJOR_TICK_SAMPLES == 0 || tickSample == graphSamples)
     {
       if (tickX > plotLeft && tickX < plotRight)
       {
@@ -1207,7 +1293,7 @@ void CityWeather::drawBatteryHistoryGraph(int16_t x, int16_t y, int16_t w, int16
       display.setCursor(labelX, plotBottom + 14);
       display.print(axisLabel);
     }
-    else if (tickSample % 6 == 0)
+    else if (tickSample % BATTERY_GRAPH_MINOR_TICK_SAMPLES == 0)
     {
       display.drawFastVLine(tickX, plotBottom - 2, 3, GxEPD_BLACK);
     }
@@ -1366,6 +1452,8 @@ void CityWeather::drawWatchFaceContent()
 
 void CityWeather::showMinuteTick()
 {
+  recordBatteryHistory();
+
   if (isNotificationsActive())
   {
     return;

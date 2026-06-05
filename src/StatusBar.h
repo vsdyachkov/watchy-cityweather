@@ -3,7 +3,6 @@
 #include <Arduino.h>
 #include <Watchy.h>
 
-uint8_t statusBarBatteryPercentFromVoltage(float voltage);
 void restoreCityWeatherWiFiState();
 void rememberCityWeatherWiFiState();
 void rememberCityWeatherWiFiCredentials();
