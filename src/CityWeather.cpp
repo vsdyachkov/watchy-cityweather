@@ -644,6 +644,26 @@ String shortVersionLabel(const String &version)
   return String(parts[0]) + "." + String(parts[1]);
 }
 
+String compactRuntimeDays(uint32_t runtimeHours)
+{
+  if (runtimeHours == 0)
+  {
+    return "<1h";
+  }
+
+  if (runtimeHours < 24)
+  {
+    return String(runtimeHours) + "h";
+  }
+
+  uint32_t days = (runtimeHours + 12) / 24;
+  if (days > 99)
+  {
+    return ">99d";
+  }
+  return String(days) + "d";
+}
+
 int compareVersionStrings(const String &currentVersion, const String &latestVersion, bool *comparable)
 {
   int currentParts[4];
@@ -997,7 +1017,7 @@ String CityWeather::batteryRuntimeEstimateText()
   uint8_t currentPercent = cityWeatherBatteryPercent(*this);
   if (currentPercent == 0)
   {
-    return "Left: <1h";
+    return "Left total <1h/?";
   }
 
   if (
@@ -1005,16 +1025,17 @@ String CityWeather::batteryRuntimeEstimateText()
       lastBatterySampleHour == INVALID_BATTERY_SAMPLE_HOUR
   )
   {
-    return "Left: estimating";
+    return "Left total calc";
   }
 
   uint32_t latestSample = lastBatterySampleHour;
   uint32_t startSample =
       latestSample >= BATTERY_GRAPH_SAMPLES ? latestSample - BATTERY_GRAPH_SAMPLES : 0;
-  bool hasPreviousSample = false;
+  bool hasWindowSample = false;
+  uint32_t firstSampleSlot = 0;
+  uint32_t lastObservedSampleSlot = 0;
   uint32_t previousSampleSlot = 0;
   uint8_t previousPercent = 0;
-  uint32_t observedDischargeSamples = 0;
   uint16_t dischargeDropPercent = 0;
 
   for (uint8_t logicalIndex = 0; logicalIndex < batteryHistoryCount; logicalIndex++)
@@ -1032,11 +1053,13 @@ String CityWeather::batteryRuntimeEstimateText()
       continue;
     }
 
-    if (!hasPreviousSample)
+    if (!hasWindowSample)
     {
+      firstSampleSlot = sampleSlot;
+      lastObservedSampleSlot = sampleSlot;
       previousSampleSlot = sampleSlot;
       previousPercent = samplePercent;
-      hasPreviousSample = true;
+      hasWindowSample = true;
       continue;
     }
 
@@ -1048,43 +1071,36 @@ String CityWeather::batteryRuntimeEstimateText()
     if (samplePercent < previousPercent)
     {
       dischargeDropPercent += previousPercent - samplePercent;
-      observedDischargeSamples += sampleSlot - previousSampleSlot;
     }
+    lastObservedSampleSlot = sampleSlot;
     previousSampleSlot = sampleSlot;
     previousPercent = samplePercent;
   }
 
-  if (!hasPreviousSample || observedDischargeSamples == 0 || dischargeDropPercent == 0)
+  if (
+      !hasWindowSample ||
+      lastObservedSampleSlot <= firstSampleSlot ||
+      dischargeDropPercent == 0
+  )
   {
-    return "Left: estimating";
+    return "Left total calc";
   }
 
   uint32_t observedSeconds =
-      observedDischargeSamples * BATTERY_SAMPLE_INTERVAL_SECONDS;
+      (lastObservedSampleSlot - firstSampleSlot) * BATTERY_SAMPLE_INTERVAL_SECONDS;
   if (observedSeconds < 12UL * SECS_PER_HOUR)
   {
-    return "Left: estimating";
+    return "Left total calc";
   }
 
   uint64_t remainingSeconds =
       (static_cast<uint64_t>(currentPercent) * observedSeconds) / dischargeDropPercent;
   uint32_t remainingHours = static_cast<uint32_t>((remainingSeconds + 1800ULL) / SECS_PER_HOUR);
-  if (remainingHours == 0)
-  {
-    return "Left: <1h";
-  }
-
-  uint32_t days = remainingHours / 24;
-  uint32_t hours = remainingHours % 24;
-  if (days > 99)
-  {
-    return "Left: >99d";
-  }
-  if (days > 0)
-  {
-    return "Left: ~" + String(days) + "d " + String(hours) + "h";
-  }
-  return "Left: ~" + String(hours) + "h";
+  uint64_t totalSeconds =
+      (100ULL * static_cast<uint64_t>(observedSeconds)) / dischargeDropPercent;
+  uint32_t totalHours = static_cast<uint32_t>((totalSeconds + 1800ULL) / SECS_PER_HOUR);
+  return "Left total ~" + compactRuntimeDays(remainingHours) +
+      "/~" + compactRuntimeDays(totalHours);
 }
 
 void CityWeather::drawAboutScreenContent(const String &updateStatus)
