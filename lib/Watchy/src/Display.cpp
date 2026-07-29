@@ -36,7 +36,6 @@ WatchyDisplay::WatchyDisplay() :
 }
 
 void WatchyDisplay::initWatchy() {
-  // Display initial full refresh disabled by scripts/patch_watchy_library.py
   displayFullInit = false;
   init(0, false, 2, true);
 }
@@ -305,7 +304,6 @@ void WatchyDisplay::refresh(bool partial_update_mode)
 
 void WatchyDisplay::refresh(int16_t x, int16_t y, int16_t w, int16_t h)
 {
-  // Display forced initial partial refresh by scripts/patch_watchy_library.py
   if (_initial_refresh) _initial_refresh = false;
   // intersection with screen
   int16_t w1 = x < 0 ? w + x : w; // reduce

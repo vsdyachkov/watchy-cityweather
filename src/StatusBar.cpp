@@ -7,6 +7,7 @@
 #include <stddef.h>
 #include <string.h>
 
+#include "Adafruit_GFX_ext.h"
 #include "BatteryMonitor.h"
 #include "Images.h"
 #include "OpenSansCondBoldCyrillic9pt.h"
@@ -60,13 +61,7 @@ RTC_DATA_ATTR char storedWiFiSSID[30] = "";
 
 uint32_t checksumBytes(const uint8_t *bytes, size_t length)
 {
-    uint32_t checksum = 2166136261UL;
-    for (size_t i = 0; i < length; i++)
-    {
-        checksum ^= bytes[i];
-        checksum *= 16777619UL;
-    }
-    return checksum;
+    return fnv1a_hash(bytes, length);
 }
 
 uint32_t wifiStateSnapshotChecksum(const WiFiStateSnapshot &snapshot)
@@ -503,9 +498,8 @@ void drawCityWeatherStatusBar(
     rememberCityWeatherWiFiState();
     Watchy::RTC.read(watchy.currentTime);
 
-    String timeText =
-        (watchy.currentTime.Hour < 10 ? "0" : "") + String(watchy.currentTime.Hour) + ":" +
-        (watchy.currentTime.Minute < 10 ? "0" : "") + String(watchy.currentTime.Minute);
+    char timeText[6];
+    snprintf(timeText, sizeof(timeText), "%02d:%02d", watchy.currentTime.Hour, watchy.currentTime.Minute);
 
     Watchy::display.setTextColor(GxEPD_BLACK);
     Watchy::display.setFont(&FreeSansBold12pt7b);
@@ -520,7 +514,8 @@ void drawCityWeatherStatusBar(
 
     Watchy::display.setFont(&FreeMonoBold9pt7b);
     uint8_t batteryPercent = cityWeatherBatteryPercent(watchy);
-    String batteryText = String(batteryPercent) + "%";
+    char batteryText[5];
+    snprintf(batteryText, sizeof(batteryText), "%u%%", batteryPercent);
     int16_t batterySlotLeft =
         textStartForRightAligned(Watchy::display, STATUS_BAR_BATTERY_RIGHT, "100%");
     int16_t iconRight = batterySlotLeft - STATUS_BAR_ICON_GAP;

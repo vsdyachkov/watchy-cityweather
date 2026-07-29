@@ -1,6 +1,14 @@
 #pragma once
-#include <Arduino.h>
+#include <Watchy.h>
 class CityWeather;
+
+inline uint32_t tmToYYYYMMDD(const tmElements_t &tm) {
+    return (tm.Year + 1970) * 10000UL + tm.Month * 100UL + tm.Day;
+}
+
+inline uint32_t ymdToYYYYMMDD(int year, int month, int day) {
+    return year * 10000UL + month * 100UL + day;
+}
 
 struct LocationData
 {

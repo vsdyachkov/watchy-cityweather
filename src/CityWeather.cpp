@@ -278,13 +278,7 @@ void resetBatteryHistory()
 
 uint32_t checksumBytes(const uint8_t *bytes, size_t length)
 {
-  uint32_t checksum = 2166136261UL;
-  for (size_t i = 0; i < length; i++)
-  {
-    checksum ^= bytes[i];
-    checksum *= 16777619UL;
-  }
-  return checksum;
+  return fnv1a_hash(bytes, length);
 }
 
 template <typename Snapshot>
@@ -815,9 +809,8 @@ bool githubLatestTag(String *tag)
 
 void CityWeather::drawTime()
 {
-  String timeStr =
-      (currentTime.Hour < 10 ? "0" : "") + String(currentTime.Hour) + ":" +
-      (currentTime.Minute < 10 ? "0" : "") + String(currentTime.Minute);
+  char timeStr[6];
+  snprintf(timeStr, sizeof(timeStr), "%02d:%02d", currentTime.Hour, currentTime.Minute);
 
   display.setTextColor(GxEPD_BLACK);
   display.setFont(&FreeSansBold12pt7b);
@@ -1391,7 +1384,7 @@ void CityWeather::drawCalendar(bool showWeather)
     // fill current day
     tmElements_t tmNow;
     Watchy::RTC.read(tmNow);
-    uint32_t today = uint32_t(tmNow.Year + 1970) * 10000 + uint32_t(tmNow.Month) * 100 + uint32_t(tmNow.Day);
+    uint32_t today = tmToYYYYMMDD(tmNow);
     if (currentWeek[i].date == today)
     {
       fillRect(display, 1 + i*28, 105, 28, 200 - 105, GxEPD_BLACK, 2);

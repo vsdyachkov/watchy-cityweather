@@ -1,6 +1,15 @@
 #include <Watchy.h>
 
-void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const unsigned char* bitmap , int16_t w, int16_t h, uint16_t color) {
+inline uint32_t fnv1a_hash(const uint8_t *bytes, size_t length) {
+  uint32_t hash = 2166136261UL;
+  for (size_t i = 0; i < length; i++) {
+    hash ^= bytes[i];
+    hash *= 16777619UL;
+  }
+  return hash;
+}
+
+inline void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const unsigned char* bitmap, int16_t w, int16_t h, uint16_t color) {
   int borderColor = color == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
   
   d.setTextColor(borderColor);
@@ -15,7 +24,7 @@ void drawOutlinedBitmap(Adafruit_GFX &d, int16_t x, int16_t y, const unsigned ch
   d.drawBitmap(x, y, bitmap, w, h, color);
 }
 
-void drawOutlinedText(Adafruit_GFX &d, int16_t x, int16_t y, const String &text, int textColor) {
+inline void drawOutlinedText(Adafruit_GFX &d, int16_t x, int16_t y, const String &text, int textColor) {
 
   int borderColor = textColor == GxEPD_BLACK ? GxEPD_WHITE : GxEPD_BLACK;
   d.setTextColor(borderColor);
@@ -32,7 +41,7 @@ void drawOutlinedText(Adafruit_GFX &d, int16_t x, int16_t y, const String &text,
   d.print(text);
 }
 
-void printCentered(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y) { 
+inline void printCentered(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t y) { 
   int16_t x1, y1;
   uint16_t w, h;
   d.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
@@ -40,7 +49,7 @@ void printCentered(Adafruit_GFX &d, const String &text, int16_t centerX, int16_t
   drawOutlinedText(d, x, y, text, GxEPD_BLACK);
 }
 
-void drawTextRightAligned(Adafruit_GFX &d, int xRight, int y, const String &text) {
+inline void drawTextRightAligned(Adafruit_GFX &d, int xRight, int y, const String &text) {
   int16_t x1, y1;
   uint16_t w, h;
   d.getTextBounds(text, 0, 0, &x1, &y1, &w, &h);
@@ -49,7 +58,7 @@ void drawTextRightAligned(Adafruit_GFX &d, int xRight, int y, const String &text
   d.print(text);
 }
 
-String clipStringToWidth(Adafruit_GFX &display, const GFXfont *f, const char *input, int16_t maxWidth) {
+inline String clipStringToWidth(Adafruit_GFX &display, const GFXfont *f, const char *input, int16_t maxWidth) {
   if (!f) return String();
 
   uint8_t first = f->first;
@@ -70,7 +79,8 @@ String clipStringToWidth(Adafruit_GFX &display, const GFXfont *f, const char *in
 
   return result;
 }
-void drawLine(Adafruit_GFX &d, int x0, int y0, int x1, int y1, uint16_t c = GxEPD_BLACK, int dithering = 2) {
+
+inline void drawLine(Adafruit_GFX &d, int x0, int y0, int x1, int y1, uint16_t c = GxEPD_BLACK, int dithering = 2) {
     int dx = abs(x1 - x0), sx = x0 < x1 ? 1 : -1;
     int dy = -abs(y1 - y0), sy = y0 < y1 ? 1 : -1;
     int err = dx + dy, count = 0;
@@ -85,7 +95,7 @@ void drawLine(Adafruit_GFX &d, int x0, int y0, int x1, int y1, uint16_t c = GxEP
     }
 }
 
-void fillRect(Adafruit_GFX &d,  int x, int y, int w, int h, uint16_t c = GxEPD_BLACK, int dithering = 2) {
+inline void fillRect(Adafruit_GFX &d, int x, int y, int w, int h, uint16_t c = GxEPD_BLACK, int dithering = 2) {
   for (int row = 0; row < h; row = row + dithering) {
     drawLine(d, x, y + row, x + w - 1, y + row, c, dithering);
   }

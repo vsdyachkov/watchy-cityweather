@@ -80,7 +80,6 @@ namespace ANCS
  */
 struct Notification
 {
-    // ANCS subtitle added by scripts/patch_watchy_library.py
     std::string title;
     std::string subtitle;
     std::string message;

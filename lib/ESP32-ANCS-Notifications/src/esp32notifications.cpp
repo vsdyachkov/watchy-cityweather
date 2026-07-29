@@ -123,7 +123,6 @@ bool BLENotifications::begin(const char *name)
 
 bool BLENotifications::stop()
 {
-	// ANCS stop cleanup added by scripts/patch_watchy_library.py
 	if (isAdvertising)
 	{
 		BLEDevice::stopAdvertising();
@@ -196,7 +195,6 @@ void BLENotifications::startAdvertising()
 #else
 	setServiceSolicitation(oAdvertisementData, ANCSBLEClient::getAncsServiceUUID());
 #endif
-// ANCS advertising payload fixed by scripts/patch_watchy_library.py
 #ifdef ENABLE_IOS_SETTINGS_PAIRING_HELPER
 	oAdvertisementData.setCompleteServices(BLEUUID((uint16_t)0x1812));
 	oAdvertisementData.setAppearance(0x03C1);
@@ -207,7 +205,6 @@ void BLENotifications::startAdvertising()
 	pAdvertising->setAdvertisementData(oAdvertisementData);
 
 #ifdef ENABLE_IOS_SETTINGS_PAIRING_HELPER
-	// ANCS advertised name fixed by scripts/patch_watchy_library.py
 	BLEAdvertisementData scanResponseData = BLEAdvertisementData();
 	scanResponseData.setName("Watchy");
 	pAdvertising->setScanResponseData(scanResponseData);

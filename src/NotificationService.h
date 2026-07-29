@@ -25,7 +25,6 @@ private:
     static constexpr char DEVICE_NAME[] = "Watchy";
     static constexpr uint8_t MAX_TRACKED_NOTIFICATIONS = 16;
     static constexpr uint16_t BUTTON_DEBOUNCE_MS = 250;
-    static constexpr uint16_t EXIT_HOLD_MS = 1200;
     static constexpr uint16_t NOTIFICATION_VIBRATION_MS = 90;
     static constexpr uint16_t NOTIFICATION_BATCH_WINDOW_MS = 3000;
     static constexpr uint16_t ADVERTISING_RESTART_DELAY_MS = 1500;

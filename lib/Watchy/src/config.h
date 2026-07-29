@@ -100,7 +100,6 @@
 #define APP_STATE       1
 #define FW_UPDATE_STATE 2
 #define MENU_HEIGHT     30
-// Notifications menu item added by scripts/patch_watchy_library.py
 #define MENU_LENGTH     5
 // set time
 #define SET_HOUR   0

@@ -1,5 +1,6 @@
 #include "CityWeatherService.h"
 #include "CityWeather.h"
+#include "Adafruit_GFX_ext.h"
 #include "Images.h"
 #include <Preferences.h>
 #include <WiFiClientSecure.h>
@@ -79,13 +80,7 @@ static void copyCStringToBuffer(char *target, size_t targetSize, const char *val
 
 static uint32_t checksumBytes(const uint8_t *bytes, size_t length)
 {
-    uint32_t checksum = 2166136261UL;
-    for (size_t i = 0; i < length; i++)
-    {
-        checksum ^= bytes[i];
-        checksum *= 16777619UL;
-    }
-    return checksum;
+    return fnv1a_hash(bytes, length);
 }
 
 static uint32_t weatherCacheSnapshotChecksum(const WeatherCacheSnapshot &snapshot)
@@ -551,7 +546,7 @@ bool CityWeatherService::getWeatherData()
                 int year = atoi(String(dateStr).substring(0, 4).c_str());
                 int month = atoi(String(dateStr).substring(5, 7).c_str());
                 int day = atoi(String(dateStr).substring(8, 10).c_str());
-                uint32_t dateNum = year * 10000 + month * 100 + day;
+                uint32_t dateNum = ymdToYYYYMMDD(year, month, day);
 
                 int weatherCode = (int)codes[i];
                 int tempMax = static_cast<int>(round((double)temps_max[i]));

@@ -165,7 +165,6 @@ void ANCSBLEClient::retrieveExtraNotificationData(Notification &pending)
 	pControlPointCharacteristic->writeValue((uint8_t *)vDate, 6, true);
 	const uint8_t vTitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDTitle, 0x0, 0x10};
 	pControlPointCharacteristic->writeValue((uint8_t *)vTitle, 8, true);
-	// ANCS subtitle added by scripts/patch_watchy_library.py
 	const uint8_t vSubtitle[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDSubtitle, 0x0, 0x10};
 	pControlPointCharacteristic->writeValue((uint8_t *)vSubtitle, 8, true);
 	const uint8_t vMessage[] = {0x0, uuid[0], uuid[1], uuid[2], uuid[3], ANCS::NotificationAttributeIDMessage, 0x0, 0x10};

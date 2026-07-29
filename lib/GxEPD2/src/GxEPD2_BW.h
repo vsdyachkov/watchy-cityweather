@@ -32,7 +32,6 @@
 
 #include "GxEPD2_EPD.h"
 
-// Screenshot buffer hook added by scripts/patch_watchy_library.py
 #include <stddef.h>
 extern "C" void cityWeatherScreenshotFrame(
     const uint8_t *buffer,
