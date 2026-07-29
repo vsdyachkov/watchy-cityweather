@@ -76,14 +76,13 @@ pio run
 rm scripts/patch_watchy_library.py
 ```
 
-## Phase 10 (Optional): Remove weak hook dependency
-Move hook logic into `CityWeather::loop()`:
-- `watchyMinuteTick()` → direct call in loop
-- `watchyWifiConfigured()` → call after `connectWiFi()`
-- `watchyShouldDeepSleep()` → inline in loop
-- `watchyMenuLoop()` / `watchyMenuShown()` → inline in loop
-- `watchyShowAbout()` → inline in loop
-- `watchyScreenshotRequested()` → already `handleCityWeatherScreenshotShortcut()`
+## Phase 10: Replace weak hooks with virtual methods
+Added 10 virtual extension methods to `Watchy` class:
+`onMinuteTick()`, `onAppTick()`, `shouldDeepSleep()`, `screenshotRequested()`,
+`notificationsEnabled()`, `onWifiConfigured()`, `onMenuLoop()`, `onMenuShown()`,
+`handleAbout()`, `onNotificationsSelected()`.
+CityWeather overrides these via `override`. NotificationService updated to call virtual methods.
+All `__attribute__((weak))` functions and `patch_watchy_library.py` comments removed.
 
 ## Progress Summary
 | Phase | Status |
@@ -96,5 +95,9 @@ Move hook logic into `CityWeather::loop()`:
 | 6. ANCS patches | DONE |
 | 7. Update platformio.ini | DONE |
 | 8. Build and verify | DONE (SUCCESS) |
-| 9. Remove patch script | PENDING |
-| 10. Remove weak hooks | PENDING |
+| 9. Remove patch script | DONE |
+| 10. Replace weak hooks with virtual methods | DONE |
+
+## Result
+Migration complete. Zero dependency on `patch_watchy_library.py`. All libraries local in `lib/`.
+Build: 22.7% RAM, 59.8% Flash.
