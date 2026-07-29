@@ -496,21 +496,8 @@ void drawCityWeatherStatusBar(
 {
     restoreCityWeatherWiFiState();
     rememberCityWeatherWiFiState();
-    Watchy::RTC.read(watchy.currentTime);
 
-    char timeText[6];
-    snprintf(timeText, sizeof(timeText), "%02d:%02d", watchy.currentTime.Hour, watchy.currentTime.Minute);
-
-    Watchy::display.setTextColor(GxEPD_BLACK);
-    Watchy::display.setFont(&FreeSansBold12pt7b);
-    Watchy::display.setCursor(-1, 17);
-    Watchy::display.print(timeText);
-    int16_t timeX1;
-    int16_t timeY1;
-    uint16_t timeWidth;
-    uint16_t timeHeight;
-    Watchy::display.getTextBounds(timeText, -1, 17, &timeX1, &timeY1, &timeWidth, &timeHeight);
-    int16_t timeRight = timeX1 + static_cast<int16_t>(timeWidth);
+    int16_t timeRight = 60;
 
     Watchy::display.setFont(&FreeMonoBold9pt7b);
     uint8_t batteryPercent = cityWeatherBatteryPercent(watchy);

@@ -16,6 +16,16 @@
 
 #define NUM_DAYS 23
 
+#ifndef DEBUG
+#define DEBUG 0
+#endif
+
+#if DEBUG
+#define DEBUG_SERIAL(x) Serial x
+#else
+#define DEBUG_SERIAL(x)
+#endif
+
 namespace
 {
 constexpr uint32_t WEATHER_CACHE_STORAGE_MAGIC = 0x43575758;
@@ -416,6 +426,9 @@ bool retry(F f, int maxAttempts) {
     if (f()) {
       return true;
     }
+    if (attempt < maxAttempts) {
+      delay(500 * attempt);
+    }
   }
   return false;
 }
@@ -436,7 +449,7 @@ bool CityWeatherService::getLocationData()
         JSONVar responseObject = JSON.parse(payload);
         if (JSON.typeof(responseObject) == "undefined")
         {
-            Serial.println("Failed to parse location JSON");
+            DEBUG_SERIAL(println("Failed to parse location JSON"));
         }
         else
         {
@@ -464,14 +477,14 @@ bool CityWeatherService::getLocationData()
                 sizeof(locationData.offset),
                 String((int)responseObject["timezone"]["offset"])
             );
-            Serial.println("OK");
+            DEBUG_SERIAL(println("OK"));
             saveWeatherCacheToStorage();
             success = true;
         }
     }
     else
     {
-        Serial.println("Error on location HTTP request");
+        DEBUG_SERIAL(println("Error on location HTTP request"));
     }
 
     http.end();
@@ -493,7 +506,7 @@ bool CityWeatherService::getWeatherData()
     }
     else
     {
-        Serial.println("Error: locationData in null");
+        DEBUG_SERIAL(println("Error: locationData in null"));
         return false;
     }
 
@@ -507,7 +520,7 @@ bool CityWeatherService::getWeatherData()
         JSONVar responseObject = JSON.parse(payload);
         if (JSON.typeof(responseObject) == "undefined")
         {
-            Serial.println("Failed to parse weather JSON");
+            DEBUG_SERIAL(println("Failed to parse weather JSON"));
         }
         else
         {
@@ -574,19 +587,19 @@ bool CityWeatherService::getWeatherData()
             forecastReady = validForecastCount > 0;
             if (forecastArrayLooksValid())
             {
-                Serial.println("OK");
+                DEBUG_SERIAL(println("OK"));
                 success = true;
             }
             else
             {
                 forecastReady = false;
-                Serial.println("Invalid weather data");
+                DEBUG_SERIAL(println("Invalid weather data"));
             }
         }
     }
     else
     {
-        Serial.println("Error on weather HTTP request");
+        DEBUG_SERIAL(println("Error on weather HTTP request"));
     }
 
     http.end();
@@ -613,7 +626,7 @@ bool CityWeatherService::updateWifiData()
         }
         else
         {
-        Serial.println("Skip update until next retry window");
+        DEBUG_SERIAL(println("Skip update until next retry window"));
         return false;
         }
     }
@@ -624,31 +637,31 @@ bool CityWeatherService::updateWifiData()
         diff >= 0 &&
         diff <= WEATHER_UPDATE_INTERVAL_SECONDS
     ) {
-        Serial.println("Don't need update");
+        DEBUG_SERIAL(println("Don't need update"));
         return false;
     }
 
-    Serial.println("Update data...");
+    DEBUG_SERIAL(println("Update data..."));
 
     bool success = false;
     bool locationReady = false;
 
     if (cityWeather.connectWiFi())
     {
-        Serial.println("#1. Wifi connected");
+        DEBUG_SERIAL(println("#1. Wifi connected"));
 
-        Serial.print("#2. getLocationData... ");
+        DEBUG_SERIAL(print("#2. getLocationData... "));
         locationReady = retry([&]() { return getLocationData(); }, 3);
 
         if (locationReady)
         {
-            Serial.print("#3. syncNTP GMT: ");
-            Serial.print(locationData.offset);
-            Serial.print("... ");
+            DEBUG_SERIAL(print("#3. syncNTP GMT: "));
+            DEBUG_SERIAL(print(locationData.offset));
+            DEBUG_SERIAL(print("... "));
             if (retry([&]() { return cityWeather.syncNTP(atol(locationData.offset)); }, 3))
             {
-                Serial.println("OK");
-                Serial.print("#4. getWeatherData...");
+                DEBUG_SERIAL(println("OK"));
+                DEBUG_SERIAL(print("#4. getWeatherData..."));
                 success = retry([&]() { return getWeatherData(); }, 3);
                 if (success)
                 {
@@ -661,13 +674,13 @@ bool CityWeatherService::updateWifiData()
             }
             else
             {
-                Serial.println("failed");
+                DEBUG_SERIAL(println("failed"));
             }
         }
     }
     else
     {
-        Serial.println("#1. Wifi not connected");
+        DEBUG_SERIAL(println("#1. Wifi not connected"));
     }
 
     WiFi.mode(WIFI_OFF);
