@@ -8,9 +8,6 @@
 NotificationService *NotificationService::activeInstance = nullptr;
 constexpr char NotificationService::DEVICE_NAME[];
 
-void watchyAppTick(Watchy *watchy);
-bool watchyScreenshotRequested(Watchy *watchy);
-
 namespace
 {
 uint8_t maxLinesThatFit(int16_t baselineY, int16_t lineHeight, int16_t bottomY)
@@ -831,7 +828,7 @@ void NotificationService::handleVibration()
 
 void NotificationService::handleAboutScreen(Watchy &watchy)
 {
-    watchyAppTick(&watchy);
+    watchy.onAppTick();
 
     uint8_t currentButtonMask = readButtonMask();
     uint8_t pressedButtons = currentButtonMask & ~previousAboutButtonMask;
@@ -871,7 +868,7 @@ void NotificationService::handleButtons(Watchy &watchy)
     bool hasNotifications = trackedNotificationCount > 0;
     unlockState();
 
-    if ((pressedButtons & MENU_BUTTON) != 0 && watchyScreenshotRequested(&watchy))
+    if ((pressedButtons & MENU_BUTTON) != 0 && watchy.screenshotRequested())
     {
         lastButtonActionAtMs = now;
         previousButtonMask = readButtonMask();

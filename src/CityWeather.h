@@ -49,6 +49,17 @@ class CityWeather : public Watchy
         void drawAboutScreenContent(const String &updateStatus);
         void refreshAboutBatteryGraphIfNeeded();
         void drawBatteryHistoryGraph(int16_t x, int16_t y, int16_t w, int16_t h);
+
+    virtual void onMinuteTick();
+    virtual void onAppTick();
+    virtual bool shouldDeepSleep();
+    virtual bool screenshotRequested();
+    virtual bool notificationsEnabled();
+    virtual void onWifiConfigured();
+    virtual void onMenuLoop();
+    virtual void onMenuShown();
+    virtual bool handleAbout();
+    virtual void onNotificationsSelected();
 };
 
 inline void CityWeather::handleButtonPress()

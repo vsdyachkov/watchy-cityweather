@@ -102,6 +102,18 @@ public:
   virtual void drawWatchFace(); // override this method for different watch
                                 // faces
 
+  // Extension points for application-specific behavior
+  virtual void onMinuteTick();
+  virtual void onAppTick();
+  virtual bool shouldDeepSleep();
+  virtual bool screenshotRequested();
+  virtual bool notificationsEnabled();
+  virtual void onWifiConfigured();
+  virtual void onMenuLoop();
+  virtual void onMenuShown();
+  virtual bool handleAbout();
+  virtual void onNotificationsSelected();
+
 private:
   void _bmaConfig();
   static void _configModeCallback(WiFiManager *myWiFiManager);

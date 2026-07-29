@@ -1520,63 +1520,61 @@ void CityWeather::stopNotifications()
   Watchy::showMenu(menuIndex, true);
 }
 
-void watchyMinuteTick(Watchy *watchy)
+void CityWeather::onMinuteTick()
 {
-  static_cast<CityWeather *>(watchy)->showMinuteTick();
+  showMinuteTick();
 }
 
-void watchyAppTick(Watchy *watchy)
+void CityWeather::onAppTick()
 {
-  static_cast<CityWeather *>(watchy)->showAppTick();
+  showAppTick();
 }
 
-void watchyNotificationsSelected(Watchy *watchy)
+void CityWeather::onNotificationsSelected()
 {
-  static_cast<CityWeather *>(watchy)->showNotifications();
+  showNotifications();
 }
 
-bool watchyShouldDeepSleep(Watchy *watchy)
+bool CityWeather::shouldDeepSleep()
 {
-  CityWeather *cityWeather = static_cast<CityWeather *>(watchy);
-  return !cityWeather->isNotificationsActive() && !cityWeather->isAboutScreenActive();
+  return !isNotificationsActive() && !isAboutScreenActive();
 }
 
-bool watchyScreenshotRequested(Watchy *watchy)
+bool CityWeather::screenshotRequested()
 {
-  return handleCityWeatherScreenshotShortcut(watchy);
+  return handleCityWeatherScreenshotShortcut(this);
 }
 
-bool watchyNotificationsEnabled(Watchy *watchy)
+bool CityWeather::notificationsEnabled()
 {
-  return static_cast<CityWeather *>(watchy)->isNotificationsActive();
+  return isNotificationsActive();
 }
 
-void watchyWifiConfigured(Watchy *watchy)
+void CityWeather::onWifiConfigured()
 {
   rememberCityWeatherWiFiState();
   rememberCityWeatherWiFiCredentials();
   resetCityWeatherNetworkCache();
-  static_cast<CityWeather *>(watchy)->refreshWeatherAfterWiFiConfigured();
+  refreshWeatherAfterWiFiConfigured();
 }
 
-void watchyMenuLoop(Watchy *watchy)
+void CityWeather::onMenuLoop()
 {
-  CityWeather *cityWeather = static_cast<CityWeather *>(watchy);
-  if (cityWeather->isAboutScreenActive())
+  if (isAboutScreenActive())
   {
-    cityWeather->showAppTick();
+    showAppTick();
     return;
   }
-  cityWeather->updateMenuStatusBar();
+  updateMenuStatusBar();
 }
 
-void watchyMenuShown(Watchy *watchy)
+void CityWeather::onMenuShown()
 {
-  static_cast<CityWeather *>(watchy)->updateMenuStatusBar(true, false);
+  updateMenuStatusBar(true, false);
 }
 
-bool watchyShowAbout(Watchy *watchy)
+bool CityWeather::handleAbout()
 {
-  static_cast<CityWeather *>(watchy)->showAboutScreen();
+  showAboutScreen();
   return true;
 }

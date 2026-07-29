@@ -14,71 +14,6 @@
 GxEPD2_BW<WatchyDisplay, WatchyDisplay::HEIGHT> Watchy::display(
     WatchyDisplay{});
 
-// Minute tick hook added by scripts/patch_watchy_library.py
-void watchyMinuteTick(Watchy *watchy) __attribute__((weak));
-void watchyMinuteTick(Watchy *watchy) {
-  watchy->showWatchFace(true);
-}
-
-// WiFi configured hook added by scripts/patch_watchy_library.py
-void watchyWifiConfigured(Watchy *watchy) __attribute__((weak));
-void watchyWifiConfigured(Watchy *watchy) {
-  (void)watchy;
-}
-
-// App tick hook added by scripts/patch_watchy_library.py
-void watchyAppTick(Watchy *watchy) __attribute__((weak));
-void watchyAppTick(Watchy *watchy) {
-  (void)watchy;
-}
-
-// About screen hook added by scripts/patch_watchy_library.py
-bool watchyShowAbout(Watchy *watchy) __attribute__((weak));
-bool watchyShowAbout(Watchy *watchy) {
-  (void)watchy;
-  return false;
-}
-
-// Menu shown hook added by scripts/patch_watchy_library.py
-void watchyMenuShown(Watchy *watchy) __attribute__((weak));
-void watchyMenuShown(Watchy *watchy) {
-  (void)watchy;
-}
-
-// Menu loop hook added by scripts/patch_watchy_library.py
-void watchyMenuLoop(Watchy *watchy) __attribute__((weak));
-void watchyMenuLoop(Watchy *watchy) {
-  (void)watchy;
-}
-
-// Notifications menu state hook added by scripts/patch_watchy_library.py
-bool watchyNotificationsEnabled(Watchy *watchy) __attribute__((weak));
-bool watchyNotificationsEnabled(Watchy *watchy) {
-  (void)watchy;
-  return false;
-}
-
-// Deep sleep hook added by scripts/patch_watchy_library.py
-bool watchyShouldDeepSleep(Watchy *watchy) __attribute__((weak));
-bool watchyShouldDeepSleep(Watchy *watchy) {
-  (void)watchy;
-  return true;
-}
-
-// Notifications menu hook added by scripts/patch_watchy_library.py
-void watchyNotificationsSelected(Watchy *watchy) __attribute__((weak));
-void watchyNotificationsSelected(Watchy *watchy) {
-  (void)watchy;
-}
-
-// Screenshot request hook added by scripts/patch_watchy_library.py
-bool watchyScreenshotRequested(Watchy *watchy) __attribute__((weak));
-bool watchyScreenshotRequested(Watchy *watchy) {
-  (void)watchy;
-  return false;
-}
-
-
 RTC_DATA_ATTR int guiState;
 RTC_DATA_ATTR int menuIndex;
 RTC_DATA_ATTR BMA423 sensor;
@@ -88,7 +23,6 @@ RTC_DATA_ATTR weatherData currentWeather;
 RTC_DATA_ATTR int weatherIntervalCounter = -1;
 RTC_DATA_ATTR long gmtOffset = 0;
 RTC_DATA_ATTR bool alreadyInMenu         = true;
-// Fast menu partial rows added by scripts/patch_watchy_library.py
 static int previousFastMenuIndex = -1;
 RTC_DATA_ATTR bool USB_PLUGGED_IN = false;
 RTC_DATA_ATTR tmElements_t bootTime;
@@ -116,10 +50,8 @@ void Watchy::init(String datetime) {
     RTC.read(currentTime);
     switch (guiState) {
     case WATCHFACE_STATE:
-      // Minute tick hook added by scripts/patch_watchy_library.py
-      watchyMinuteTick(this); // partial updates on tick
+      onMinuteTick(); // partial updates on tick
       if (settings.vibrateOClock) {
-        // Hourly vibration quiet hours added by scripts/patch_watchy_library.py
         if (currentTime.Minute == 0 && currentTime.Hour >= 10 && currentTime.Hour < 22) {
           // The RTC wakes us up once per minute
           vibMotor(75, 4);
@@ -127,14 +59,12 @@ void Watchy::init(String datetime) {
       }
       break;
     case APP_STATE:
-      // App tick hook added by scripts/patch_watchy_library.py
-      watchyAppTick(this);
+      onAppTick();
       break;
     case MAIN_MENU_STATE:
       // Return to watchface if in menu for more than one tick
       if (alreadyInMenu) {
         guiState = WATCHFACE_STATE;
-        // Menu returns switched to partial watchface refresh by scripts/patch_watchy_library.py
         showWatchFace(true);
       } else {
         alreadyInMenu = true;
@@ -165,16 +95,13 @@ void Watchy::init(String datetime) {
     gmtOffset = settings.gmtOffset;
     RTC.read(currentTime);
     RTC.read(bootTime);
-    // Reset watchface refresh adjusted by scripts/patch_watchy_library.py
     showWatchFace(true); // partial update on reset/upload
-    // Reset vibration disabled by scripts/patch_watchy_library.py
     // vibMotor(75, 4);
     // For some reason, seems to be enabled on first boot
     esp_sleep_disable_wakeup_source(ESP_SLEEP_WAKEUP_ALL);
     break;
   }
-  // Deep sleep hook added by scripts/patch_watchy_library.py
-  if (watchyShouldDeepSleep(this)) {
+  if (shouldDeepSleep()) {
     deepSleep();
   }
 }
@@ -217,8 +144,7 @@ void Watchy::deepSleep() {
 
 void Watchy::handleButtonPress() {
   uint64_t wakeupBit = esp_sleep_get_ext1_wakeup_status();
-  // Screenshot request hook added by scripts/patch_watchy_library.py
-  if ((wakeupBit & MENU_BTN_MASK) && watchyScreenshotRequested(this)) {
+  if ((wakeupBit & MENU_BTN_MASK) && screenshotRequested()) {
     return;
   }
   // Menu Button
@@ -233,8 +159,7 @@ void Watchy::handleButtonPress() {
         setupWifi();
         break;
       case 1:
-        // Notifications menu hook added by scripts/patch_watchy_library.py
-        watchyNotificationsSelected(this);
+        onNotificationsSelected();
         return;
       case 2:
         setTime();
@@ -243,7 +168,9 @@ void Watchy::handleButtonPress() {
         showAccelerometer();
         break;
       case 4:
-        showAbout();
+        if (handleAbout()) {
+          return;
+        }
         break;
       default:
         break;
@@ -256,7 +183,6 @@ void Watchy::handleButtonPress() {
   else if (wakeupBit & BACK_BTN_MASK) {
     if (guiState == MAIN_MENU_STATE) { // exit to watch face if already in menu
       RTC.read(currentTime);
-      // Menu returns switched to partial watchface refresh by scripts/patch_watchy_library.py
       showWatchFace(true);
     } else if (guiState == APP_STATE) {
       showMenu(menuIndex, true); // exit to menu if already in app
@@ -299,15 +225,13 @@ void Watchy::handleButtonPress() {
   pinMode(UP_BTN_PIN, INPUT);
   pinMode(DOWN_BTN_PIN, INPUT);
   while (!timeout) {
-    // Menu loop hook added by scripts/patch_watchy_library.py
-    watchyMenuLoop(this);
+    onMenuLoop();
     if (millis() - lastTimeout > 5000) {
       timeout = true;
     } else {
       if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW) {
         lastTimeout = millis();
-        // Screenshot request hook added by scripts/patch_watchy_library.py
-        if (watchyScreenshotRequested(this)) {
+        if (screenshotRequested()) {
           continue;
         }
         if (guiState ==
@@ -317,8 +241,7 @@ void Watchy::handleButtonPress() {
             setupWifi();
             break;
           case 1:
-            // Notifications menu hook added by scripts/patch_watchy_library.py
-            watchyNotificationsSelected(this);
+            onNotificationsSelected();
             return;
           case 2:
             setTime();
@@ -340,7 +263,6 @@ void Watchy::handleButtonPress() {
         if (guiState ==
             MAIN_MENU_STATE) { // exit to watch face if already in menu
           RTC.read(currentTime);
-          // Menu returns switched to partial watchface refresh by scripts/patch_watchy_library.py
           showWatchFace(true);
           break; // leave loop
         } else if (guiState == APP_STATE) {
@@ -425,10 +347,9 @@ void Watchy::showMenu(byte menuIndex, bool partialRefresh) {
       bluetoothPushState,
       sizeof(bluetoothPushState),
       "[%s]",
-      watchyNotificationsEnabled(this) ? "ON" : "OFF"
+      notificationsEnabled() ? "ON" : "OFF"
   );
   const char *menuItems[] = {
-      // Notifications menu item added by scripts/patch_watchy_library.py
       lastSSID[0] != '\0' ? lastSSID : "Wi-Fi", "Bluetooth",
       "Set Date/Time", "Accelerometer", "About"};
   const char *menuTrailItems[] = {
@@ -486,8 +407,7 @@ void Watchy::showMenu(byte menuIndex, bool partialRefresh) {
   }
   display.setTextWrap(true);
 
-  // Menu shown hook added by scripts/patch_watchy_library.py
-  watchyMenuShown(this);
+  onMenuShown();
   display.displayWindow(0, 0, 200, 200);
 
   guiState = MAIN_MENU_STATE;
@@ -547,10 +467,9 @@ void Watchy::showFastMenu(byte menuIndex) {
       bluetoothPushState,
       sizeof(bluetoothPushState),
       "[%s]",
-      watchyNotificationsEnabled(this) ? "ON" : "OFF"
+      notificationsEnabled() ? "ON" : "OFF"
   );
   const char *menuItems[] = {
-      // Notifications menu item added by scripts/patch_watchy_library.py
       lastSSID[0] != '\0' ? lastSSID : "Wi-Fi", "Bluetooth",
       "Set Date/Time", "Accelerometer", "About"};
   const char *menuTrailItems[] = {
@@ -660,8 +579,7 @@ void Watchy::showFastMenu(byte menuIndex) {
 }
 
 void Watchy::showAbout() {
-  // About screen hook added by scripts/patch_watchy_library.py
-  if (watchyShowAbout(this)) {
+  if (handleAbout()) {
     return;
   }
   display.setFullWindow();
@@ -670,7 +588,6 @@ void Watchy::showAbout() {
   display.setTextColor(GxEPD_BLACK);
   display.setCursor(0, 20);
 
-  // CityWeather app version added by scripts/patch_watchy_library.py
   display.print("CityWeather: ");
   display.println(CITYWEATHER_VERSION);
 
@@ -772,8 +689,7 @@ void Watchy::setTime() {
   while (1) {
 
     if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW) {
-      // Screenshot request hook added by scripts/patch_watchy_library.py
-      if (watchyScreenshotRequested(this)) {
+      if (screenshotRequested()) {
         continue;
       }
       setIndex++;
@@ -928,8 +844,7 @@ void Watchy::showAccelerometer() {
 
   while (1) {
 
-    // Screenshot request hook added by scripts/patch_watchy_library.py
-    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW && watchyScreenshotRequested(this)) {
+    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW && screenshotRequested()) {
       continue;
     }
 
@@ -1235,7 +1150,6 @@ void Watchy::_bmaConfig() {
 }
 
 void Watchy::setupWifi() {
-  // WiFi setup cancel added by scripts/patch_watchy_library.py
   display.epd2.setBusyCallback(0); // temporarily disable lightsleep on busy
   WiFiManager wifiManager;
   wifiManager.setConfigPortalBlocking(false);
@@ -1259,8 +1173,7 @@ void Watchy::setupWifi() {
   unsigned long startedAt = millis();
   wifiManager.startConfigPortal(WIFI_AP_SSID);
   while (!connected && !canceled) {
-    // Screenshot request hook added by scripts/patch_watchy_library.py
-    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW && watchyScreenshotRequested(this)) {
+    if (digitalRead(MENU_BTN_PIN) == ACTIVE_LOW && screenshotRequested()) {
       continue;
     }
     if (digitalRead(BACK_BTN_PIN) == ACTIVE_LOW) {
@@ -1290,8 +1203,7 @@ void Watchy::setupWifi() {
     weatherIntervalCounter = -1; // Reset to force weather to be read again
     lastIPAddress = WiFi.localIP();
     WiFi.SSID().toCharArray(lastSSID, 30);
-    // WiFi configured hook added by scripts/patch_watchy_library.py
-    watchyWifiConfigured(this);
+    onWifiConfigured();
     display.displayWindow(0, 24, 200, 176);
     guiState = APP_STATE;
   } else {
@@ -1309,7 +1221,6 @@ void Watchy::setupWifi() {
 }
 
 void Watchy::_configModeCallback(WiFiManager *myWiFiManager) {
-  // WiFi current info added by scripts/patch_watchy_library.py
   display.setFullWindow();
   display.fillRect(0, 24, 200, 176, GxEPD_WHITE);
   display.setFont(&FreeMonoBold9pt7b);
@@ -1521,16 +1432,51 @@ bool Watchy::syncNTP(long gmt) {
 }
 
 bool Watchy::syncNTP(long gmt, String ntpServer) {
-  // NTP sync - call after connecting to
-  // WiFi and remember to turn it back off
-  WiFiUDP ntpUDP;
-  NTPClient timeClient(ntpUDP, ntpServer.c_str(), gmt);
-  timeClient.begin();
-  if (!timeClient.forceUpdate()) {
-    return false; // NTP sync failed
-  }
-  tmElements_t tm;
-  breakTime((time_t)timeClient.getEpochTime(), tm);
-  RTC.set(tm);
+   // NTP sync - call after connecting to
+   // WiFi and remember to turn it back off
+   WiFiUDP ntpUDP;
+   NTPClient timeClient(ntpUDP, ntpServer.c_str(), gmt);
+   timeClient.begin();
+   if (!timeClient.forceUpdate()) {
+     return false; // NTP sync failed
+   }
+   tmElements_t tm;
+   breakTime((time_t)timeClient.getEpochTime(), tm);
+   RTC.set(tm);
+   return true;
+ }
+
+void Watchy::onMinuteTick() {
+  showWatchFace(true);
+}
+
+void Watchy::onAppTick() {
+}
+
+bool Watchy::shouldDeepSleep() {
   return true;
+}
+
+bool Watchy::screenshotRequested() {
+  return false;
+}
+
+bool Watchy::notificationsEnabled() {
+  return false;
+}
+
+void Watchy::onWifiConfigured() {
+}
+
+void Watchy::onMenuLoop() {
+}
+
+void Watchy::onMenuShown() {
+}
+
+bool Watchy::handleAbout() {
+  return false;
+}
+
+void Watchy::onNotificationsSelected() {
 }
