@@ -43,9 +43,11 @@ Apple Notification Center Service via BLE. Up to 16 notifications, 3s batching, 
 
 E-ink 1-bit, dithering 2px, outlined text, fonts in PROGMEM.
 
-## Patching
+## Extension Points
 
-`scripts/patch_watchy_library.py` — modifies Watchy/ANCS/GxEPD2 via marker search. Never remove markers.
+Watchy uses virtual methods for application-specific behavior. CityWeather overrides:
+`onMinuteTick()`, `onAppTick()`, `shouldDeepSleep()`, `screenshotRequested()`, `notificationsEnabled()`, `onWifiConfigured()`, `onMenuLoop()`, `onMenuShown()`, `handleAbout()`, `onNotificationsSelected()`.
+Never remove or change signatures of these virtual methods.
 
 ## CI
 
@@ -55,7 +57,24 @@ E-ink 1-bit, dithering 2px, outlined text, fonts in PROGMEM.
 
 - ❌ Remove legacy NVS formats without migration
 - ❌ Change magic/version without updating loader
-- ❌ Remove markers in `patch_watchy_library.py`
 - ❌ Use `Serial.print` in production
 - ❌ Add `RTC_DATA_ATTR` without need
 - ❌ Use `String` — use `char[]` + `strncpy`
+
+## Build Checks (Mandatory)
+
+Every change must pass these checks before committing:
+
+1. **`pio run` succeeds** — the build must compile without errors. This is the primary gate.
+2. **Size limits** — check output after `Checking size`:
+   - RAM ≤ 320 KB (currently 22.7%)
+   - Flash ≤ 4 MB (currently 59.8%)
+3. **No `patch_watchy_library.py` references** — all libraries are local copies in `lib/`. No references to the patch script should remain in any source file.
+4. **No secrets** — never commit API keys, passwords, or tokens. GitHub Push Protection will block the push.
+5. **Clean build** — run `rm -rf .pio && pio run` to clear the cache. Cached artifacts can hide real errors.
+
+## Build Checks (Recommended)
+
+- **No new warnings** — review compiler warnings for new issues
+- **`lib/` is tracked** — verify with `git check-ignore lib/` that local libraries are not ignored
+- **Deploy to device** — if hardware is available, test the binary on the actual Watchy
