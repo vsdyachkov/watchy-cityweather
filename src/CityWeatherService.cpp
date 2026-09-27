@@ -55,7 +55,7 @@ struct WeatherCacheSnapshot
 }
 
 RTC_DATA_ATTR LocationData locationData;
-RTC_DATA_ATTR const char *wdayNames[7] = {"Su", "Mo", "Tu", "We", "Th", "Fr", "Sa"};
+RTC_DATA_ATTR const char *wdayNames[7] = {"Mo", "Tu", "We", "Th", "Fr", "Sa", "Su"};
 
 RTC_DATA_ATTR DailyForecast forecast[NUM_DAYS];
 
@@ -365,20 +365,22 @@ static bool loadWeatherCacheFromStorage()
         forecast[i].tempMax = snapshot.forecast[i].tempMax;
         forecast[i].tempMin = snapshot.forecast[i].tempMin;
         forecast[i].weatherCode = snapshot.forecast[i].weatherCode;
+        if (
+            !forecastReady &&
+            forecast[i].date > 20200101 &&
+            forecast[i].tempMax >= -100 &&
+            forecast[i].tempMax <= 100 &&
+            forecast[i].tempMin >= -100 &&
+            forecast[i].tempMin <= 100 &&
+            forecast[i].weatherCode >= 0 &&
+            forecast[i].weatherCode <= 99
+        )
+        {
+            forecastReady = true;
+        }
     }
 
     return weatherCacheInMemoryLooksValid();
-}
-
-static void clearWeatherCacheStorage()
-{
-    Preferences preferences;
-    if (!preferences.begin(WEATHER_CACHE_STORAGE_NAMESPACE, false))
-    {
-        return;
-    }
-    preferences.remove(WEATHER_CACHE_STORAGE_KEY);
-    preferences.end();
 }
 
 static void ensureWeatherCacheLoaded()
@@ -407,17 +409,12 @@ static void ensureWeatherCacheLoaded()
     weatherCacheLoadedMagic = WEATHER_CACHE_STORAGE_MAGIC;
 }
 
-void resetCityWeatherNetworkCache()
+void requestCityWeatherRefresh()
 {
-    locationData.city[0] = '\0';
-    locationData.lat[0] = '\0';
-    locationData.lon[0] = '\0';
-    locationData.offset[0] = '\0';
+    ensureWeatherCacheLoaded();
     savedTime = 0;
     nextWeatherRetryTime = 0;
-    forecastReady = false;
-    weatherCacheLoadedMagic = WEATHER_CACHE_STORAGE_MAGIC;
-    clearWeatherCacheStorage();
+    saveWeatherCacheToStorage();
 }
 
 template<typename F>
@@ -643,6 +640,11 @@ bool CityWeatherService::updateWifiData()
 
     DEBUG_SERIAL(println("Update data..."));
 
+    LocationData previousLocationData = locationData;
+    DailyForecast previousForecast[NUM_DAYS];
+    memcpy(previousForecast, forecast, sizeof(forecast));
+    time_t previousSavedTime = savedTime;
+    bool previousForecastReady = forecastReady;
     bool success = false;
     bool locationReady = false;
 
@@ -652,29 +654,38 @@ bool CityWeatherService::updateWifiData()
 
         DEBUG_SERIAL(print("#2. getLocationData... "));
         locationReady = retry([&]() { return getLocationData(); }, 3);
+        if (!locationReady)
+        {
+            locationData = previousLocationData;
+            locationReady = hasLocationData();
+            DEBUG_SERIAL(println("Using cached location"));
+        }
 
         if (locationReady)
         {
             DEBUG_SERIAL(print("#3. syncNTP GMT: "));
             DEBUG_SERIAL(print(locationData.offset));
             DEBUG_SERIAL(print("... "));
-            if (retry([&]() { return cityWeather.syncNTP(atol(locationData.offset)); }, 3))
+            bool timeSynchronized =
+                retry([&]() { return cityWeather.syncNTP(atol(locationData.offset)); }, 3);
+            if (timeSynchronized)
             {
                 DEBUG_SERIAL(println("OK"));
-                DEBUG_SERIAL(print("#4. getWeatherData..."));
-                success = retry([&]() { return getWeatherData(); }, 3);
-                if (success)
-                {
-                    Watchy::RTC.read(tm);
-                    savedTime = makeTime(tm);
-                    nextWeatherRetryTime = 0;
-                    saveWeatherCacheToStorage();
-                    cityWeather.refreshCachedReleaseStatusIfDue();
-                }
             }
             else
             {
                 DEBUG_SERIAL(println("failed"));
+            }
+
+            DEBUG_SERIAL(print("#4. getWeatherData..."));
+            success = retry([&]() { return getWeatherData(); }, 3);
+            if (success)
+            {
+                Watchy::RTC.read(tm);
+                savedTime = makeTime(tm);
+                nextWeatherRetryTime = 0;
+                saveWeatherCacheToStorage();
+                cityWeather.refreshCachedReleaseStatusIfDue();
             }
         }
     }
@@ -687,8 +698,15 @@ bool CityWeatherService::updateWifiData()
 
     if (!success)
     {
+        locationData = previousLocationData;
+        memcpy(forecast, previousForecast, sizeof(forecast));
+        savedTime = previousSavedTime;
+        forecastReady = previousForecastReady;
+        saveWeatherCacheToStorage();
         nextWeatherRetryTime = now + (
-            hasAnyForecast ? NETWORK_RETRY_INTERVAL_SECONDS : EMPTY_FORECAST_RETRY_INTERVAL_SECONDS
+            hasAnyForecast && previousSavedTime != 0
+                ? NETWORK_RETRY_INTERVAL_SECONDS
+                : EMPTY_FORECAST_RETRY_INTERVAL_SECONDS
         );
     }
 

@@ -820,6 +820,7 @@ void CityWeather::drawTime()
 
 void CityWeather::drawStatusBar()
 {
+  drawTime();
   drawCityWeatherStatusBar(*this, isNotificationsActive());
 }
 
@@ -1452,9 +1453,16 @@ void CityWeather::drawWatchFaceContent()
   drawCity();
 
   const bool hasForecastData = cityWeatherService.hasForecastData();
-  if (!hasForecastData && !WIFI_CONFIGURED) {
+  if (!hasForecastData && !WIFI_CONFIGURED)
+  {
     drawTip();
-  } else {
+  }
+  else if (!hasForecastData)
+  {
+    drawWeatherUnavailable();
+  }
+  else
+  {
     drawCalendar(hasForecastData);
   }
 };
@@ -1481,9 +1489,9 @@ void CityWeather::showMinuteTick()
 
   display.setFullWindow();
   display.epd2.asyncPowerOn();
-  display.fillScreen(GxEPD_WHITE);
-  drawTime();
-  display.displayWindow(0, 0, 80, 21);
+  display.fillRect(0, 0, 200, 24, GxEPD_WHITE);
+  drawStatusBar();
+  display.displayWindow(0, 0, 200, 24);
   guiState = WATCHFACE_STATE;
 }
 
@@ -1547,7 +1555,7 @@ void CityWeather::onWifiConfigured()
 {
   rememberCityWeatherWiFiState();
   rememberCityWeatherWiFiCredentials();
-  resetCityWeatherNetworkCache();
+  requestCityWeatherRefresh();
   refreshWeatherAfterWiFiConfigured();
 }
 

@@ -29,7 +29,7 @@ struct DailyForecast
 
 extern RTC_DATA_ATTR LocationData locationData;
 
-void resetCityWeatherNetworkCache();
+void requestCityWeatherRefresh();
 
 class CityWeatherService
 {
